@@ -471,6 +471,61 @@ ${body}</div>\n`;
         };
     }
 
+    function extractFootnotes(text) {
+        const defs = new Map();
+        const order = [];
+        const lines = text.split('\n');
+        const out = [];
+        let inFence = false;
+        let i = 0;
+
+        while (i < lines.length) {
+            const line = lines[i];
+            if (/^(```|~~~)/.test(line)) { inFence = !inFence; out.push(line); i++; continue; }
+            if (inFence) { out.push(line); i++; continue; }
+
+            const defMatch = /^\[\^([^\]]+)\]:\s?(.*)$/.exec(line);
+            if (defMatch) {
+                const id = defMatch[1];
+                const content = [defMatch[2]];
+                i++;
+                while (i < lines.length && lines[i].trim() !== '' && !/^\[\^/.test(lines[i]) && !/^(```|~~~)/.test(lines[i])) {
+                    content.push(lines[i]);
+                    i++;
+                }
+                defs.set(id, content.join('\n').trim());
+                continue;
+            }
+            out.push(line);
+            i++;
+        }
+
+        if (defs.size === 0) return { body: text, defs, order };
+
+        inFence = false;
+        const processed = out.map(line => {
+            if (/^(```|~~~)/.test(line)) { inFence = !inFence; return line; }
+            if (inFence) return line;
+            return line.replace(/\[\^([^\]]+)\]/g, (m, id) => {
+                if (!defs.has(id)) return m;
+                let idx = order.indexOf(id);
+                if (idx === -1) { order.push(id); idx = order.length - 1; }
+                return `<sup class="footnote-ref" id="fnref-${id}"><a href="#fn-${id}">${idx + 1}</a></sup>`;
+            });
+        }).join('\n');
+
+        return { body: processed, defs, order };
+    }
+
+    function renderFootnotesSection(defs, order) {
+        if (order.length === 0) return '';
+        const items = order.map(id => {
+            const inline = marked.parseInline(defs.get(id) || '');
+            return `<li id="fn-${id}"><p>${inline} <a class="footnote-backref" href="#fnref-${id}" aria-label="Back to reference">↩</a></p></li>`;
+        }).join('');
+        return `<section class="footnotes"><ol>${items}</ol></section>`;
+    }
+
     function parseFrontmatter(text) {
         const m = /^---\s*\n([\s\S]*?)\n---\s*\n?/.exec(text);
         if (!m) return { frontmatter: null, body: text };
@@ -520,12 +575,13 @@ ${body}</div>\n`;
         configureMarked();
         slugCounts.clear();
 
-        const { frontmatter, body } = parseFrontmatter(rawContent);
+        const { frontmatter, body: bodyAfterFm } = parseFrontmatter(rawContent);
+        const { body, defs: fnDefs, order: fnOrder } = extractFootnotes(bodyAfterFm);
 
         const hasMath = config.enable_math && /\$\$?[^$\n]/.test(body);
         const hasDiagrams = config.enable_diagrams && /```mermaid/i.test(body);
 
-        const html = marked.parse(body);
+        const html = marked.parse(body) + renderFootnotesSection(fnDefs, fnOrder);
         const fmHtml = (config.frontmatter_display && frontmatter && Object.keys(frontmatter).length)
             ? renderFrontmatter(frontmatter) : '';
 
