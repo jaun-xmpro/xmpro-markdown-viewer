@@ -1122,99 +1122,115 @@ ${body}</div>\n`;
         if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
     }
 
-    // ---- Lightsaber hold-to-ignite ----
-    // Press and hold the read-aloud play button for HOLD_MS. A blue blade
-    // grows leftward from the button, building up over the hold duration.
-    // Release before completion → blade retracts, no Star Wars (click is
-    // also suppressed). Hold to completion → ignition sound + crawl opens.
-    const LIGHTSABER_HOLD_MS = 8000;
-    const LIGHTSABER_MAX_LENGTH = 360;
-    const LIGHTSABER_CLICK_THRESHOLD_MS = 180;
-    let lightsaberHold = null;
+    // ---- Hold-to-ignite (audio only, no visual blade) ----
+    // Press and hold the read-aloud play button for HOLD_MS. A subtle hum
+    // builds while you hold; at the 8s mark the ignition sound fires and
+    // the Star Wars crawl opens. Release before then → hum fades, no crawl.
+    const HOLD_MS = 8000;
+    const HOLD_CLICK_THRESHOLD_MS = 180;
+    let saberHold = null;
 
     function setupLightsaberHold() {
         if (!els.readBtn) return;
-        els.readBtn.addEventListener('pointerdown', onLightsaberHoldStart);
-        document.addEventListener('pointerup', onLightsaberHoldEnd);
-        document.addEventListener('pointercancel', onLightsaberHoldEnd);
+        els.readBtn.addEventListener('pointerdown', onHoldStart);
+        document.addEventListener('pointerup', onHoldEnd);
+        document.addEventListener('pointercancel', onHoldEnd);
     }
 
-    function onLightsaberHoldStart(e) {
+    function onHoldStart(e) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
-        const rect = els.readBtn.getBoundingClientRect();
-        lightsaberHold = {
+        saberHold = {
             pointerId: e.pointerId,
-            originX: rect.left,                    // blade grows leftward from the button's left edge
-            originY: rect.top + rect.height / 2,
             startTime: performance.now(),
             completed: false,
-            rafId: null
+            timerId: null,
+            humStarted: false
         };
         try { els.readBtn.setPointerCapture(e.pointerId); } catch {}
-        els.readBtn.dataset.lightsaber = 'active';
-        tickLightsaberHold();
+        tickHold();
     }
 
-    function tickLightsaberHold() {
-        if (!lightsaberHold || lightsaberHold.completed) return;
-        const elapsed = performance.now() - lightsaberHold.startTime;
-        const pct = Math.min(elapsed / LIGHTSABER_HOLD_MS, 1);
-        // Don't render visible blade for the first ~180ms — that keeps
-        // accidental clicks from briefly flashing the blade.
-        if (elapsed >= LIGHTSABER_CLICK_THRESHOLD_MS) {
-            renderLightsaberBlade(LIGHTSABER_MAX_LENGTH * pct, pct >= 0.98);
+    function tickHold() {
+        if (!saberHold || saberHold.completed) return;
+        const elapsed = performance.now() - saberHold.startTime;
+        // Start the hum once we cross the click-vs-hold threshold so a
+        // tap-then-release doesn't briefly play a tone.
+        if (!saberHold.humStarted && elapsed >= HOLD_CLICK_THRESHOLD_MS) {
+            saberHold.humStarted = true;
+            startSaberHum();
         }
-        if (pct >= 1) {
-            lightsaberHold.completed = true;
+        if (elapsed >= HOLD_MS) {
+            saberHold.completed = true;
+            // Set the click-suppression flag NOW so the eventual pointerup
+            // (whenever the user releases) doesn't fire a real click that
+            // starts TTS. cancelHold below clears saberHold, and onHoldEnd
+            // would otherwise early-return without setting this.
+            lightsaberWasDragging = true;
+            stopSaberHum(/* abrupt */ true);
             playSaberIgnite();
             enterStarwars();
-            setTimeout(cancelLightsaberHold, 700);
+            setTimeout(cancelHold, 600);
             return;
         }
-        // setTimeout (~30 Hz) instead of requestAnimationFrame so the hold
-        // progresses even if the iframe is throttled/backgrounded.
-        lightsaberHold.timerId = setTimeout(tickLightsaberHold, 32);
+        saberHold.timerId = setTimeout(tickHold, 50);
     }
 
-    function onLightsaberHoldEnd(e) {
-        if (!lightsaberHold || e.pointerId !== lightsaberHold.pointerId) return;
-        const elapsed = performance.now() - lightsaberHold.startTime;
-        const wasHold = elapsed >= LIGHTSABER_CLICK_THRESHOLD_MS;
-        if (!lightsaberHold.completed) cancelLightsaberHold();
-        if (wasHold) lightsaberWasDragging = true; // suppress the click that follows
+    function onHoldEnd(e) {
+        if (!saberHold || e.pointerId !== saberHold.pointerId) return;
+        const elapsed = performance.now() - saberHold.startTime;
+        const wasHold = elapsed >= HOLD_CLICK_THRESHOLD_MS;
+        if (!saberHold.completed) cancelHold();
+        if (wasHold) lightsaberWasDragging = true; // suppress click that follows
     }
 
-    function cancelLightsaberHold() {
-        if (!lightsaberHold) return;
-        if (lightsaberHold.timerId) clearTimeout(lightsaberHold.timerId);
-        try { els.readBtn.releasePointerCapture(lightsaberHold.pointerId); } catch {}
-        delete els.readBtn.dataset.lightsaber;
-        clearLightsaberBlade();
-        lightsaberHold = null;
+    function cancelHold() {
+        if (!saberHold) return;
+        if (saberHold.timerId) clearTimeout(saberHold.timerId);
+        try { els.readBtn.releasePointerCapture(saberHold.pointerId); } catch {}
+        if (saberHold.humStarted) stopSaberHum(/* abrupt */ false);
+        saberHold = null;
     }
 
-    function renderLightsaberBlade(length, isFull) {
-        const blade = els.lightsaberBlade;
-        if (!blade) return;
-        blade.hidden = false;
-        blade.style.left = lightsaberHold.originX + 'px';
-        blade.style.top = (lightsaberHold.originY - 4) + 'px';
-        blade.style.width = length + 'px';
-        // Rotate 180° so the blade grows leftward from its origin while
-        // transform-origin (0 50%) keeps it anchored at the hilt.
-        blade.style.transform = 'rotate(180deg)';
-        blade.dataset.full = isFull ? 'true' : 'false';
+    // ---- Audio: hum during hold + ignition snap at completion ----
+    let humCtx = null, humOsc = null, humGain = null;
+
+    function startSaberHum() {
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            humCtx = new Ctx();
+            humOsc = humCtx.createOscillator();
+            humGain = humCtx.createGain();
+            humOsc.type = 'sawtooth';
+            const t = humCtx.currentTime;
+            // Frequency slowly rises 80→120 Hz across the remaining hold —
+            // subtle build that signals "something's about to happen".
+            humOsc.frequency.setValueAtTime(80, t);
+            humOsc.frequency.linearRampToValueAtTime(120, t + (HOLD_MS - HOLD_CLICK_THRESHOLD_MS) / 1000);
+            // Ramp from inaudible to ~0.045 (still quiet) over 8 s.
+            humGain.gain.setValueAtTime(0.0001, t);
+            humGain.gain.exponentialRampToValueAtTime(0.012, t + 0.4);
+            humGain.gain.linearRampToValueAtTime(0.045, t + (HOLD_MS - HOLD_CLICK_THRESHOLD_MS) / 1000);
+            humOsc.connect(humGain).connect(humCtx.destination);
+            humOsc.start();
+        } catch { humCtx = null; }
     }
 
-    function clearLightsaberBlade() {
-        const blade = els.lightsaberBlade;
-        if (!blade) return;
-        blade.hidden = true;
-        blade.style.width = '0';
-        delete blade.dataset.full;
+    function stopSaberHum(abrupt) {
+        if (!humCtx) return;
+        try {
+            const t = humCtx.currentTime;
+            humGain.gain.cancelScheduledValues(t);
+            humGain.gain.setValueAtTime(humGain.gain.value, t);
+            humGain.gain.exponentialRampToValueAtTime(0.0001, t + (abrupt ? 0.06 : 0.2));
+            humOsc.stop(t + (abrupt ? 0.08 : 0.25));
+            const ctx = humCtx;
+            humOsc.onended = () => { try { ctx.close(); } catch {} };
+        } catch {}
+        humCtx = null; humOsc = null; humGain = null;
     }
 
-    // Subtle synthesised ignition sound — layered sawtooth + triangle for
+    // Subtle synthesised ignition snap — layered sawtooth + triangle for
     // the iconic vrm-vzz character, no audio file needed.
     function playSaberIgnite() {
         try {
@@ -1253,11 +1269,15 @@ ${body}</div>\n`;
 
     function enterStarwars() {
         if (!els.starwarsOverlay || !els.starwarsCrawl || !els.content) return;
-        // Clone the rendered content into the crawl so it picks up paragraphs,
-        // headings, lists, etc. — CSS strips the bits that don't suit a crawl.
+        // Clone rendered content; CSS hides the bits that don't suit a crawl.
         els.starwarsCrawl.innerHTML = els.content.innerHTML;
-        els.starwarsOverlay.hidden = false;
+        // Reset animations: removing then re-adding .playing forces a fresh
+        // pause→running transition (and a fresh from:top:100% start).
         els.starwarsOverlay.classList.remove('playing');
+        els.starwarsOverlay.hidden = false;
+        // Force a reflow so the animation restarts cleanly on every entry.
+        void els.starwarsOverlay.offsetWidth;
+        els.starwarsOverlay.classList.add('playing');
         Logger.info('★ Star Wars mode engaged — may the markdown be with you');
     }
 
@@ -1265,21 +1285,13 @@ ${body}</div>\n`;
         if (!els.starwarsOverlay) return;
         els.starwarsOverlay.hidden = true;
         els.starwarsOverlay.classList.remove('playing');
-        if (tts.state !== 'idle') stopReading();
     }
 
+    // The play button on the overlay only toggles the scroll animation.
+    // TTS is intentionally not involved — Star Wars mode is silent reading.
     function toggleStarwarsPlay() {
         if (!els.starwarsOverlay) return;
-        const isPlaying = els.starwarsOverlay.classList.contains('playing');
-        if (isPlaying) {
-            els.starwarsOverlay.classList.remove('playing');
-            if (tts.state === 'playing') pauseReading();
-        } else {
-            els.starwarsOverlay.classList.add('playing');
-            if (!config.enable_read_aloud || !('speechSynthesis' in window)) return;
-            if (tts.state === 'idle') startReading();
-            else if (tts.state === 'paused') resumeReading();
-        }
+        els.starwarsOverlay.classList.toggle('playing');
     }
 
     function populateVoiceList() {
@@ -1720,7 +1732,6 @@ ${body}</div>\n`;
         els.starwarsCrawl = document.getElementById('starwars-crawl');
         els.starwarsPlayBtn = document.getElementById('starwars-play-btn');
         els.starwarsExitBtn = document.getElementById('starwars-exit-btn');
-        els.lightsaberBlade = document.getElementById('lightsaber-blade');
     }
 
     function debounce(fn, wait) {
