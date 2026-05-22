@@ -31,11 +31,31 @@ optional; defaults are shown.
 
 | Key | Type | Default | Notes |
 |-----|------|---------|-------|
-| `font_family` | enum | `"system"` | `system`, `sans` (Inter), `serif` (Source Serif), `mono` (JetBrains Mono), `dyslexic` (OpenDyslexic) |
+| `font_family` | enum | `"system"` | See **Fonts** below |
+| `font_family_url` | string | `""` | Optional web-font stylesheet URL (https). Pair with `font_family_name`. |
+| `font_family_name` | string | `""` | CSS family name to apply when `font_family_url` is set (e.g. `"Crimson Pro"`). |
 | `font_size` | 0.8–1.5 | `1.0` | Multiplier on 16px base |
 | `line_height` | enum | `"normal"` | `tight` (1.35), `normal` (1.65), `relaxed` (1.85) |
 | `content_width` | enum | `"medium"` | `narrow` (60ch), `medium` (75ch), `wide` (90ch), `full` (100%) |
 | `heading_style` | enum | `"classic"` | `classic`, `modern` (accent bar), `underlined`, `numbered` (auto numbering) |
+
+### Fonts
+
+`font_family` accepts:
+
+- **System (no CDN load)**: `system`, `sans`, `serif`, `mono`, `dyslexic`. These use the OS's native fonts and never make a network request.
+- **Google Fonts presets (lazy-loaded)**: `inter`, `lora`, `source-serif`, `jetbrains-mono`, `ibm-plex-sans`. The viewer fetches the stylesheet from `fonts.googleapis.com` with `display=swap` only when the preset is selected. The font URL is loaded once and cached for the metablock's lifetime.
+
+For any other web font (Bunny Fonts, self-hosted, Adobe Fonts, an internal CDN), set both:
+
+```json
+{
+  "font_family_url":  "https://fonts.bunny.net/css?family=crimson-pro:400,700",
+  "font_family_name": "Crimson Pro"
+}
+```
+
+When both are set they override `font_family`. The URL must use `http://` or `https://` — other schemes are rejected. The metablock always falls back to a sensible system font if the web font fails to load (enterprise CDN block, network error, typo in the URL), so content stays readable.
 
 ## Code blocks
 

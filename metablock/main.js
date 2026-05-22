@@ -73,6 +73,8 @@
         background_overlay: 0.55,
         accent_color: '',
         font_family: 'system',
+        font_family_url: '',
+        font_family_name: '',
         font_size: 1.0,
         line_height: 'normal',
         content_width: 'medium',
@@ -113,6 +115,15 @@
     let lastFetchedContent = null;
     let darkMQ = null;
     const slugCounts = new Map();
+    const loadedFontUrls = new Set();
+
+    const FONT_PRESETS = {
+        'inter':          { url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap' },
+        'lora':           { url: 'https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&display=swap' },
+        'source-serif':   { url: 'https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;500;600;700&display=swap' },
+        'jetbrains-mono': { url: 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap' },
+        'ibm-plex-sans':  { url: 'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap' }
+    };
 
     const Logger = {
         levels: { trace: 0, debug: 1, info: 2, warn: 3, error: 4, none: 5 },
@@ -202,7 +213,7 @@
 
         root.setAttribute('data-theme', config.theme || 'auto');
         root.setAttribute('data-bg', config.background || 'solid');
-        root.setAttribute('data-font', config.font_family || 'system');
+        applyFont(root);
         root.setAttribute('data-leading', config.line_height || 'normal');
         root.setAttribute('data-content-width', config.content_width || 'medium');
         root.setAttribute('data-heading', config.heading_style || 'classic');
@@ -223,6 +234,51 @@
 
         const pb = document.getElementById('progress-bar');
         if (pb) pb.hidden = !config.enable_progress_bar;
+    }
+
+    function applyFont(root) {
+        // Custom URL + name overrides everything else.
+        if (config.font_family_url && config.font_family_name) {
+            const url = validateUrl(config.font_family_url);
+            if (url) {
+                loadFontStylesheet(url);
+                root.setAttribute('data-font', 'custom');
+                root.style.setProperty('--font-family-custom',
+                    `${config.font_family_name}, ${getSystemFontFallback(config.font_family)}`);
+                return;
+            }
+            Logger.warn('Invalid font_family_url (must be http/https):', config.font_family_url);
+        }
+        root.style.removeProperty('--font-family-custom');
+
+        const family = config.font_family || 'system';
+        const preset = FONT_PRESETS[family];
+        if (preset) loadFontStylesheet(preset.url);
+        root.setAttribute('data-font', family);
+    }
+
+    function getSystemFontFallback(familyHint) {
+        // Pick a sensible system fallback so the user's font swaps in over
+        // something close in shape rather than a jarring default.
+        if (familyHint === 'serif' || familyHint === 'lora' || familyHint === 'source-serif') {
+            return "'Iowan Old Style', Georgia, serif";
+        }
+        if (familyHint === 'mono' || familyHint === 'jetbrains-mono') {
+            return "'SF Mono', Menlo, Consolas, monospace";
+        }
+        return "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    }
+
+    function loadFontStylesheet(url) {
+        if (loadedFontUrls.has(url)) return;
+        loadedFontUrls.add(url);
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = url;
+        link.crossOrigin = 'anonymous';
+        link.dataset.fontPreset = 'true';
+        document.head.appendChild(link);
+        Logger.debug('Loaded font stylesheet:', url);
     }
 
     function onValueMappingLoaded(data) {

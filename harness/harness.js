@@ -36,6 +36,8 @@
             background_overlay: 0.55,
             accent_color: '#009fde',
             font_family: 'system',
+            font_family_url: '',
+            font_family_name: '',
             font_size: 1.0,
             content_width: 'medium',
             heading_style: 'classic',
@@ -195,6 +197,24 @@
         });
 
         document.getElementById('btn-clear-log').addEventListener('click', clearLog);
+
+        const fontUrlInput = document.getElementById('ctrl-font-url');
+        const fontNameInput = document.getElementById('ctrl-font-name');
+        document.getElementById('btn-font-apply').addEventListener('click', () => {
+            const url = fontUrlInput.value.trim();
+            const name = fontNameInput.value.trim();
+            if (!url || !name) return;
+            state.config.font_family_url = url;
+            state.config.font_family_name = name;
+            send('markdown:update-config', { font_family_url: url, font_family_name: name });
+        });
+        document.getElementById('btn-font-clear').addEventListener('click', () => {
+            fontUrlInput.value = '';
+            fontNameInput.value = '';
+            state.config.font_family_url = '';
+            state.config.font_family_name = '';
+            send('markdown:update-config', { font_family_url: '', font_family_name: '' });
+        });
     }
 
     function updateStreamButton() {

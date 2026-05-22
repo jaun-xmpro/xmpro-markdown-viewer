@@ -46,10 +46,19 @@
             <div class="h-ctrl">
                 <label for="ctrl-font">Font</label>
                 <select id="ctrl-font">
-                    <option value="system">system</option>
-                    <option value="sans">sans</option>
-                    <option value="serif">serif</option>
-                    <option value="mono">mono</option>
+                    <optgroup label="System fonts">
+                        <option value="system">system</option>
+                        <option value="sans">sans</option>
+                        <option value="serif">serif</option>
+                        <option value="mono">mono</option>
+                    </optgroup>
+                    <optgroup label="Google Fonts">
+                        <option value="inter">inter</option>
+                        <option value="lora">lora</option>
+                        <option value="source-serif">source-serif</option>
+                        <option value="jetbrains-mono">jetbrains-mono</option>
+                        <option value="ibm-plex-sans">ibm-plex-sans</option>
+                    </optgroup>
                 </select>
             </div>
 
@@ -132,6 +141,22 @@
                     <option value="subtle" selected>subtle</option>
                     <option value="lively">lively</option>
                 </select>
+            </div>
+
+            <div class="h-section">
+                <h3>Custom web font</h3>
+                <div class="h-custom-font">
+                    <input id="ctrl-font-url" type="text" placeholder="Stylesheet URL (https://…)" autocomplete="off">
+                    <input id="ctrl-font-name" type="text" placeholder='Family name (e.g. "Crimson Pro")' autocomplete="off">
+                    <div class="h-custom-font-actions">
+                        <button id="btn-font-apply" class="h-secondary">Apply</button>
+                        <button id="btn-font-clear" class="h-secondary">Clear</button>
+                    </div>
+                    <small class="h-custom-font-hint">
+                        Overrides the Font dropdown. Try any Google Fonts CSS URL
+                        with the matching family name.
+                    </small>
+                </div>
             </div>
 
             <div class="h-section h-actions-block">
