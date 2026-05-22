@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XMPro Markdown Viewer — Harness</title>
+    <link rel="stylesheet" href="harness.css">
+</head>
+<body>
+
+    <header class="h-toolbar">
+        <div class="h-brand">
+            <span class="h-brand-mark"></span>
+            <span class="h-brand-text">Markdown Viewer · Harness</span>
+        </div>
+
+        <div class="h-controls">
+            <div class="h-ctrl">
+                <label for="ctrl-theme">Theme</label>
+                <select id="ctrl-theme">
+                    <option value="auto">auto</option>
+                    <option value="light">light</option>
+                    <option value="dark">dark</option>
+                    <option value="xmpro-light">xmpro-light</option>
+                    <option value="xmpro-dark">xmpro-dark</option>
+                </select>
+            </div>
+
+            <div class="h-ctrl">
+                <label for="ctrl-bg">Background</label>
+                <select id="ctrl-bg">
+                    <option value="solid">solid</option>
+                    <option value="gradient">gradient</option>
+                    <option value="xmpro">xmpro</option>
+                    <option value="dots">dots</option>
+                    <option value="grid">grid</option>
+                    <option value="paper">paper</option>
+                    <option value="glass">glass</option>
+                    <option value="mesh">mesh</option>
+                    <option value="aurora">aurora</option>
+                    <option value="image">image (placeholder)</option>
+                    <option value="none">none</option>
+                </select>
+            </div>
+
+            <div class="h-ctrl">
+                <label for="ctrl-font">Font</label>
+                <select id="ctrl-font">
+                    <option value="system">system</option>
+                    <option value="sans">sans</option>
+                    <option value="serif">serif</option>
+                    <option value="mono">mono</option>
+                </select>
+            </div>
+
+            <div class="h-ctrl">
+                <label for="ctrl-fsize">Size <span id="fsize-display">1.00</span></label>
+                <input id="ctrl-fsize" type="range" min="0.8" max="1.5" step="0.05" value="1.0">
+            </div>
+
+            <div class="h-ctrl">
+                <label for="ctrl-width">Width</label>
+                <select id="ctrl-width">
+                    <option value="narrow">narrow</option>
+                    <option value="medium" selected>medium</option>
+                    <option value="wide">wide</option>
+                    <option value="full">full</option>
+                </select>
+            </div>
+
+            <div class="h-ctrl">
+                <label for="ctrl-heading">Headings</label>
+                <select id="ctrl-heading">
+                    <option value="classic">classic</option>
+                    <option value="modern">modern</option>
+                    <option value="underlined">underlined</option>
+                    <option value="numbered">numbered</option>
+                </select>
+            </div>
+
+            <div class="h-ctrl">
+                <label for="ctrl-accent">Accent</label>
+                <input id="ctrl-accent" type="color" value="#009fde">
+            </div>
+        </div>
+
+        <div class="h-actions">
+            <button id="btn-reload" title="Hard reload iframe">⟳ Reload</button>
+            <button id="btn-toggle-log" title="Show postMessage log">⌗ Log</button>
+        </div>
+    </header>
+
+    <div class="h-main">
+
+        <aside class="h-sidebar">
+            <div class="h-section">
+                <h3>Examples</h3>
+                <ul class="h-examples" id="example-list"></ul>
+            </div>
+
+            <div class="h-section">
+                <h3>Features</h3>
+                <ul class="h-toggles" id="toggle-list">
+                    <li><label><input type="checkbox" data-cfg="enable_toc"> Table of contents</label></li>
+                    <li>
+                        <label class="h-sub">TOC position
+                            <select id="ctrl-toc-pos">
+                                <option value="left">left</option>
+                                <option value="right" selected>right</option>
+                                <option value="top">top</option>
+                                <option value="floating">floating</option>
+                            </select>
+                        </label>
+                    </li>
+                    <li><label><input type="checkbox" data-cfg="enable_math"> Math (KaTeX)</label></li>
+                    <li><label><input type="checkbox" data-cfg="enable_diagrams"> Diagrams (Mermaid)</label></li>
+                    <li><label><input type="checkbox" data-cfg="enable_anchors" checked> Heading anchors</label></li>
+                    <li><label><input type="checkbox" data-cfg="enable_progress_bar"> Progress bar</label></li>
+                    <li><label><input type="checkbox" data-cfg="enable_image_zoom" checked> Image zoom</label></li>
+                    <li><label><input type="checkbox" data-cfg="enable_search" checked> Search (Ctrl+F)</label></li>
+                    <li><label><input type="checkbox" data-cfg="code_copy_button" checked> Code copy button</label></li>
+                    <li><label><input type="checkbox" data-cfg="code_line_numbers"> Code line numbers</label></li>
+                    <li><label><input type="checkbox" data-cfg="code_wrap"> Code wrap</label></li>
+                    <li><label><input type="checkbox" data-cfg="frontmatter_display"> Show frontmatter</label></li>
+                </ul>
+            </div>
+
+            <div class="h-section">
+                <h3>Animation</h3>
+                <select id="ctrl-anim">
+                    <option value="none">none</option>
+                    <option value="subtle" selected>subtle</option>
+                    <option value="lively">lively</option>
+                </select>
+            </div>
+
+            <div class="h-section h-actions-block">
+                <button id="btn-stream" class="h-primary" disabled>▶ Start streaming</button>
+                <button id="btn-postmsg" class="h-secondary" title="Send markdown:scroll-to top">↑ Scroll to top</button>
+                <button id="btn-clear-log" class="h-secondary">Clear log</button>
+            </div>
+
+            <div class="h-section h-footer">
+                <small>
+                    The harness is purely for previewing. The deployable metablock lives in
+                    <code>../metablock/</code>.
+                </small>
+            </div>
+        </aside>
+
+        <main class="h-viewer">
+            <div class="h-viewer-frame">
+                <iframe id="metablock-frame" src="preview.html?standalone=1" title="Metablock preview"></iframe>
+            </div>
+        </main>
+
+    </div>
+
+    <section class="h-log" id="log-drawer">
+        <header class="h-log-header">
+            <strong>postMessage log</strong>
+            <span id="log-count" class="h-log-count">0 messages</span>
+            <button id="btn-close-log" class="h-log-close" title="Hide log">×</button>
+        </header>
+        <div class="h-log-body" id="log-body">
+            <div class="h-log-empty">No messages yet — interact with the metablock to see traffic.</div>
+        </div>
+    </section>
+
+    <script src="harness.js"></script>
+</body>
+</html>

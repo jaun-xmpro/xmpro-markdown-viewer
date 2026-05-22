@@ -1,0 +1,15 @@
+# Per-user Claude Code settings (not shareable)
+.claude/settings.local.json
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Editor
+.vscode/
+.idea/

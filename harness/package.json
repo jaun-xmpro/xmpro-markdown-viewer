@@ -1,0 +1,14 @@
+{
+    "name": "xmpro-markdown-viewer-harness",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Local preview harness for the XMPro Markdown Viewer metablock",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}

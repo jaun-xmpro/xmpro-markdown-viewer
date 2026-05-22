@@ -1,0 +1,149 @@
+<!--
+    XMPro Markdown Viewer — main.html
+
+    This file is the structural shell uploaded to XMPro App Designer as
+    the Metablock's Presentation File. All dynamic rendering is performed
+    by main.js. External libraries load from jsdelivr; KaTeX and Mermaid
+    are NOT eagerly loaded — main.js fetches them only when needed.
+-->
+
+<!-- Core libraries (always loaded) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-gfm-heading-id@3.1.3/lib/index.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+
+<!-- Prism syntax theme tokens (theme-aware via CSS variables) -->
+<style id="prism-base-theme">
+    .md pre[class*="language-"], .md code[class*="language-"] {
+        color: var(--code-text);
+        background: transparent;
+        font-family: var(--font-mono);
+        text-shadow: none;
+        direction: ltr;
+        text-align: left;
+        white-space: pre;
+        word-spacing: normal;
+        word-break: normal;
+        word-wrap: normal;
+        line-height: 1.55;
+        tab-size: 4;
+        hyphens: none;
+    }
+    .md .token.comment, .md .token.prolog, .md .token.cdata { color: var(--text-tertiary); font-style: italic; }
+    .md .token.punctuation { color: var(--text-secondary); }
+    .md .token.namespace { opacity: 0.7; }
+    .md .token.property, .md .token.tag, .md .token.constant, .md .token.symbol, .md .token.deleted { color: #d6336c; }
+    .md .token.boolean, .md .token.number { color: #f76707; }
+    .md .token.selector, .md .token.attr-name, .md .token.string, .md .token.char, .md .token.builtin, .md .token.inserted { color: #2b8a3e; }
+    .md .token.operator, .md .token.entity, .md .token.url, .md .language-css .token.string, .md .style .token.string, .md .token.variable { color: #1864ab; }
+    .md .token.atrule, .md .token.attr-value, .md .token.function, .md .token.class-name { color: #862e9c; }
+    .md .token.keyword { color: #1864ab; font-weight: 600; }
+    .md .token.regex, .md .token.important { color: #e8590c; }
+    .md .token.important, .md .token.bold { font-weight: 700; }
+    .md .token.italic { font-style: italic; }
+
+    [data-theme="dark"] .md .token.property, [data-theme="dark"] .md .token.tag, [data-theme="dark"] .md .token.constant, [data-theme="dark"] .md .token.symbol, [data-theme="dark"] .md .token.deleted { color: #ff8787; }
+    [data-theme="dark"] .md .token.boolean, [data-theme="dark"] .md .token.number { color: #ffb366; }
+    [data-theme="dark"] .md .token.selector, [data-theme="dark"] .md .token.attr-name, [data-theme="dark"] .md .token.string, [data-theme="dark"] .md .token.char, [data-theme="dark"] .md .token.builtin, [data-theme="dark"] .md .token.inserted { color: #8ce99a; }
+    [data-theme="dark"] .md .token.operator, [data-theme="dark"] .md .token.entity, [data-theme="dark"] .md .token.url, [data-theme="dark"] .md .token.variable { color: #74c0fc; }
+    [data-theme="dark"] .md .token.atrule, [data-theme="dark"] .md .token.attr-value, [data-theme="dark"] .md .token.function, [data-theme="dark"] .md .token.class-name { color: #d0bfff; }
+    [data-theme="dark"] .md .token.keyword { color: #74c0fc; font-weight: 600; }
+    [data-theme="dark"] .md .token.regex, [data-theme="dark"] .md .token.important { color: #ffa94d; }
+
+    [data-theme="xmpro-dark"] .md .token.string, [data-theme="xmpro-dark"] .md .token.attr-name { color: #73cec6; }
+    [data-theme="xmpro-dark"] .md .token.keyword, [data-theme="xmpro-dark"] .md .token.operator { color: #00d6ef; }
+    [data-theme="xmpro-dark"] .md .token.function, [data-theme="xmpro-dark"] .md .token.class-name { color: #c9a4ff; }
+    [data-theme="xmpro-dark"] .md .token.number, [data-theme="xmpro-dark"] .md .token.boolean { color: #ffb366; }
+    [data-theme="xmpro-dark"] .md .token.comment { color: #4d7186; }
+</style>
+
+<!-- Root container — main.js mounts everything inside -->
+<div class="viewer-root" id="viewer-root"
+     data-theme="auto"
+     data-bg="solid"
+     data-font="system"
+     data-leading="normal"
+     data-content-width="medium"
+     data-heading="classic"
+     data-animation="subtle"
+     data-image-zoom="true"
+     data-code-wrap="false"
+     data-line-numbers="false">
+
+    <!-- Progress bar (hidden by default; main.js toggles via class) -->
+    <div class="progress-bar" id="progress-bar" hidden>
+        <div class="progress-bar-fill" id="progress-bar-fill"></div>
+    </div>
+
+    <!-- Scroll container -->
+    <div class="viewer-scroll" id="viewer-scroll">
+        <div class="viewer-layout" id="viewer-layout" data-toc="none">
+
+            <!-- TOC slot (filled by main.js when enabled) -->
+            <aside class="toc" id="toc" hidden>
+                <div class="toc-title">On this page</div>
+                <ul id="toc-list"></ul>
+            </aside>
+
+            <!-- Main content -->
+            <main class="viewer-content" id="viewer-content">
+                <div class="skeleton" id="initial-skeleton">
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                    <div class="skeleton-line"></div>
+                </div>
+            </main>
+
+        </div>
+    </div>
+
+    <!-- Floating TOC button + drawer (used when toc_position=floating or on narrow widths) -->
+    <button class="toc-fab" id="toc-fab" aria-label="Open table of contents" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6"/>
+            <line x1="8" y1="12" x2="21" y2="12"/>
+            <line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="3.01" y2="6"/>
+            <line x1="3" y1="12" x2="3.01" y2="12"/>
+            <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+    </button>
+    <nav class="toc-drawer" id="toc-drawer" aria-label="Table of contents">
+        <div class="toc-title">On this page</div>
+        <ul id="toc-drawer-list"></ul>
+    </nav>
+
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox" aria-hidden="true" aria-label="Image viewer">
+        <button class="lightbox-close" id="lightbox-close" aria-label="Close">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+        </button>
+        <img id="lightbox-img" alt="">
+    </div>
+
+    <!-- Search overlay -->
+    <div class="search-overlay" id="search-overlay" role="search">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="search-input" placeholder="Find in document..." aria-label="Search">
+        <span class="search-info" id="search-info"></span>
+        <button id="search-prev" aria-label="Previous match" title="Previous (Shift+Enter)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+        <button id="search-next" aria-label="Next match" title="Next (Enter)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <button id="search-close" aria-label="Close (Esc)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+    </div>
+
+</div>
