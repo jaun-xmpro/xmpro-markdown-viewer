@@ -1037,7 +1037,7 @@ ${body}</div>\n`;
             else resumeReading();
         });
         els.stopBtn?.addEventListener('click', stopReading);
-        setupLightsaberDrag();
+        setupLightsaberHold();
     }
 
     // Sliders fire many `input` events per drag; debounce the persistence
@@ -1122,82 +1122,133 @@ ${body}</div>\n`;
         if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
     }
 
-    // ---- Lightsaber drag-to-ignite ----
-    // Pull the read-aloud play button away from its socket: a blue blade
-    // extends from the hilt toward the cursor. At ~95% of the target length
-    // the blade locks and Star Wars mode unlocks on release.
-    const LIGHTSABER_MAX_LENGTH = 220;
-    const LIGHTSABER_CLICK_THRESHOLD = 6;
-    let lightsaberDrag = null;
+    // ---- Lightsaber hold-to-ignite ----
+    // Press and hold the read-aloud play button for HOLD_MS. A blue blade
+    // grows leftward from the button, building up over the hold duration.
+    // Release before completion → blade retracts, no Star Wars (click is
+    // also suppressed). Hold to completion → ignition sound + crawl opens.
+    const LIGHTSABER_HOLD_MS = 8000;
+    const LIGHTSABER_MAX_LENGTH = 360;
+    const LIGHTSABER_CLICK_THRESHOLD_MS = 180;
+    let lightsaberHold = null;
 
-    function setupLightsaberDrag() {
+    function setupLightsaberHold() {
         if (!els.readBtn) return;
-        els.readBtn.addEventListener('pointerdown', onLightsaberDown);
-        document.addEventListener('pointermove', onLightsaberMove);
-        document.addEventListener('pointerup', onLightsaberUp);
-        document.addEventListener('pointercancel', onLightsaberUp);
+        els.readBtn.addEventListener('pointerdown', onLightsaberHoldStart);
+        document.addEventListener('pointerup', onLightsaberHoldEnd);
+        document.addEventListener('pointercancel', onLightsaberHoldEnd);
     }
 
-    function onLightsaberDown(e) {
+    function onLightsaberHoldStart(e) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         const rect = els.readBtn.getBoundingClientRect();
-        lightsaberDrag = {
+        lightsaberHold = {
             pointerId: e.pointerId,
-            originX: rect.left + rect.width / 2,
+            originX: rect.left,                    // blade grows leftward from the button's left edge
             originY: rect.top + rect.height / 2,
-            startX: e.clientX,
-            startY: e.clientY,
-            length: 0,
-            maxDistance: 0
+            startTime: performance.now(),
+            completed: false,
+            rafId: null
         };
         try { els.readBtn.setPointerCapture(e.pointerId); } catch {}
-    }
-
-    function onLightsaberMove(e) {
-        if (!lightsaberDrag || e.pointerId !== lightsaberDrag.pointerId) return;
-        const dxOrigin = e.clientX - lightsaberDrag.originX;
-        const dyOrigin = e.clientY - lightsaberDrag.originY;
-        const distFromOrigin = Math.hypot(dxOrigin, dyOrigin);
-        const dxStart = e.clientX - lightsaberDrag.startX;
-        const dyStart = e.clientY - lightsaberDrag.startY;
-        const distFromStart = Math.hypot(dxStart, dyStart);
-        lightsaberDrag.maxDistance = Math.max(lightsaberDrag.maxDistance, distFromStart);
-        if (distFromStart < LIGHTSABER_CLICK_THRESHOLD) return;
-        lightsaberDrag.length = Math.min(distFromOrigin, LIGHTSABER_MAX_LENGTH);
-        const angle = Math.atan2(dyOrigin, dxOrigin) * 180 / Math.PI;
-        renderLightsaber(angle);
         els.readBtn.dataset.lightsaber = 'active';
+        tickLightsaberHold();
     }
 
-    function onLightsaberUp(e) {
-        if (!lightsaberDrag || e.pointerId !== lightsaberDrag.pointerId) return;
-        const drag = lightsaberDrag;
-        lightsaberDrag = null;
-        try { els.readBtn.releasePointerCapture(e.pointerId); } catch {}
+    function tickLightsaberHold() {
+        if (!lightsaberHold || lightsaberHold.completed) return;
+        const elapsed = performance.now() - lightsaberHold.startTime;
+        const pct = Math.min(elapsed / LIGHTSABER_HOLD_MS, 1);
+        // Don't render visible blade for the first ~180ms — that keeps
+        // accidental clicks from briefly flashing the blade.
+        if (elapsed >= LIGHTSABER_CLICK_THRESHOLD_MS) {
+            renderLightsaberBlade(LIGHTSABER_MAX_LENGTH * pct, pct >= 0.98);
+        }
+        if (pct >= 1) {
+            lightsaberHold.completed = true;
+            playSaberIgnite();
+            enterStarwars();
+            setTimeout(cancelLightsaberHold, 700);
+            return;
+        }
+        // setTimeout (~30 Hz) instead of requestAnimationFrame so the hold
+        // progresses even if the iframe is throttled/backgrounded.
+        lightsaberHold.timerId = setTimeout(tickLightsaberHold, 32);
+    }
+
+    function onLightsaberHoldEnd(e) {
+        if (!lightsaberHold || e.pointerId !== lightsaberHold.pointerId) return;
+        const elapsed = performance.now() - lightsaberHold.startTime;
+        const wasHold = elapsed >= LIGHTSABER_CLICK_THRESHOLD_MS;
+        if (!lightsaberHold.completed) cancelLightsaberHold();
+        if (wasHold) lightsaberWasDragging = true; // suppress the click that follows
+    }
+
+    function cancelLightsaberHold() {
+        if (!lightsaberHold) return;
+        if (lightsaberHold.timerId) clearTimeout(lightsaberHold.timerId);
+        try { els.readBtn.releasePointerCapture(lightsaberHold.pointerId); } catch {}
         delete els.readBtn.dataset.lightsaber;
-        clearLightsaber();
-        if (drag.maxDistance < LIGHTSABER_CLICK_THRESHOLD) return;     // it was a click
-        lightsaberWasDragging = true;                                   // suppress click handler
-        if (drag.length >= LIGHTSABER_MAX_LENGTH * 0.95) enterStarwars();
+        clearLightsaberBlade();
+        lightsaberHold = null;
     }
 
-    function renderLightsaber(angle) {
+    function renderLightsaberBlade(length, isFull) {
         const blade = els.lightsaberBlade;
         if (!blade) return;
         blade.hidden = false;
-        blade.style.left = lightsaberDrag.originX + 'px';
-        blade.style.top = (lightsaberDrag.originY - 4) + 'px';
-        blade.style.width = lightsaberDrag.length + 'px';
-        blade.style.transform = `rotate(${angle}deg)`;
-        blade.dataset.full = lightsaberDrag.length >= LIGHTSABER_MAX_LENGTH * 0.95 ? 'true' : 'false';
+        blade.style.left = lightsaberHold.originX + 'px';
+        blade.style.top = (lightsaberHold.originY - 4) + 'px';
+        blade.style.width = length + 'px';
+        // Rotate 180° so the blade grows leftward from its origin while
+        // transform-origin (0 50%) keeps it anchored at the hilt.
+        blade.style.transform = 'rotate(180deg)';
+        blade.dataset.full = isFull ? 'true' : 'false';
     }
 
-    function clearLightsaber() {
+    function clearLightsaberBlade() {
         const blade = els.lightsaberBlade;
         if (!blade) return;
         blade.hidden = true;
         blade.style.width = '0';
         delete blade.dataset.full;
+    }
+
+    // Subtle synthesised ignition sound — layered sawtooth + triangle for
+    // the iconic vrm-vzz character, no audio file needed.
+    function playSaberIgnite() {
+        try {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            const ctx = new Ctx();
+            const now = ctx.currentTime;
+
+            const sweep = ctx.createOscillator();
+            const sweepGain = ctx.createGain();
+            sweep.type = 'sawtooth';
+            sweep.frequency.setValueAtTime(60, now);
+            sweep.frequency.exponentialRampToValueAtTime(180, now + 0.28);
+            sweep.frequency.linearRampToValueAtTime(140, now + 0.6);
+            sweepGain.gain.setValueAtTime(0.0001, now);
+            sweepGain.gain.exponentialRampToValueAtTime(0.07, now + 0.05);
+            sweepGain.gain.exponentialRampToValueAtTime(0.04, now + 0.4);
+            sweepGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.8);
+            sweep.connect(sweepGain).connect(ctx.destination);
+
+            const shimmer = ctx.createOscillator();
+            const shimmerGain = ctx.createGain();
+            shimmer.type = 'triangle';
+            shimmer.frequency.setValueAtTime(420, now);
+            shimmer.frequency.linearRampToValueAtTime(360, now + 0.4);
+            shimmerGain.gain.setValueAtTime(0.0001, now);
+            shimmerGain.gain.exponentialRampToValueAtTime(0.02, now + 0.1);
+            shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.7);
+            shimmer.connect(shimmerGain).connect(ctx.destination);
+
+            sweep.start(now); sweep.stop(now + 0.85);
+            shimmer.start(now); shimmer.stop(now + 0.8);
+            sweep.onended = () => { try { ctx.close(); } catch {} };
+        } catch { /* AudioContext blocked or unavailable — silently skip */ }
     }
 
     function enterStarwars() {
