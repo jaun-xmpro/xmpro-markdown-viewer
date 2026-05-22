@@ -1024,14 +1024,20 @@ ${body}</div>\n`;
         });
     }
 
+    let lightsaberWasDragging = false;
+
     function setupReadAloud() {
         if (!els.readBtn || !('speechSynthesis' in window)) return;
         els.readBtn.addEventListener('click', () => {
+            // A pulled-away drag releases here too; the lightsaber handler
+            // sets this flag so the click is treated as drag-end, not play.
+            if (lightsaberWasDragging) { lightsaberWasDragging = false; return; }
             if (tts.state === 'idle') startReading();
             else if (tts.state === 'playing') pauseReading();
             else resumeReading();
         });
         els.stopBtn?.addEventListener('click', stopReading);
+        setupLightsaberDrag();
     }
 
     // Sliders fire many `input` events per drag; debounce the persistence
@@ -1104,24 +1110,94 @@ ${body}</div>\n`;
     }
 
     let voiceListenerPending = false;
-    // Easter egg: type "starwars" anywhere to enter the opening-crawl mode.
+    // Star Wars mode is unlocked by the lightsaber drag-to-ignite below.
+    // Escape exits; the overlay's own play/exit buttons handle the rest.
     function setupStarwars() {
-        let buf = '';
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && els.starwarsOverlay && !els.starwarsOverlay.hidden) {
                 exitStarwars();
-                return;
-            }
-            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
-            if (e.key.length !== 1) { buf = ''; return; }
-            buf = (buf + e.key.toLowerCase()).slice(-10);
-            if (buf.endsWith('starwars')) {
-                buf = '';
-                enterStarwars();
             }
         });
         if (els.starwarsPlayBtn) els.starwarsPlayBtn.addEventListener('click', toggleStarwarsPlay);
         if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
+    }
+
+    // ---- Lightsaber drag-to-ignite ----
+    // Pull the read-aloud play button away from its socket: a blue blade
+    // extends from the hilt toward the cursor. At ~95% of the target length
+    // the blade locks and Star Wars mode unlocks on release.
+    const LIGHTSABER_MAX_LENGTH = 220;
+    const LIGHTSABER_CLICK_THRESHOLD = 6;
+    let lightsaberDrag = null;
+
+    function setupLightsaberDrag() {
+        if (!els.readBtn) return;
+        els.readBtn.addEventListener('pointerdown', onLightsaberDown);
+        document.addEventListener('pointermove', onLightsaberMove);
+        document.addEventListener('pointerup', onLightsaberUp);
+        document.addEventListener('pointercancel', onLightsaberUp);
+    }
+
+    function onLightsaberDown(e) {
+        if (e.button !== 0 && e.pointerType === 'mouse') return;
+        const rect = els.readBtn.getBoundingClientRect();
+        lightsaberDrag = {
+            pointerId: e.pointerId,
+            originX: rect.left + rect.width / 2,
+            originY: rect.top + rect.height / 2,
+            startX: e.clientX,
+            startY: e.clientY,
+            length: 0,
+            maxDistance: 0
+        };
+        try { els.readBtn.setPointerCapture(e.pointerId); } catch {}
+    }
+
+    function onLightsaberMove(e) {
+        if (!lightsaberDrag || e.pointerId !== lightsaberDrag.pointerId) return;
+        const dxOrigin = e.clientX - lightsaberDrag.originX;
+        const dyOrigin = e.clientY - lightsaberDrag.originY;
+        const distFromOrigin = Math.hypot(dxOrigin, dyOrigin);
+        const dxStart = e.clientX - lightsaberDrag.startX;
+        const dyStart = e.clientY - lightsaberDrag.startY;
+        const distFromStart = Math.hypot(dxStart, dyStart);
+        lightsaberDrag.maxDistance = Math.max(lightsaberDrag.maxDistance, distFromStart);
+        if (distFromStart < LIGHTSABER_CLICK_THRESHOLD) return;
+        lightsaberDrag.length = Math.min(distFromOrigin, LIGHTSABER_MAX_LENGTH);
+        const angle = Math.atan2(dyOrigin, dxOrigin) * 180 / Math.PI;
+        renderLightsaber(angle);
+        els.readBtn.dataset.lightsaber = 'active';
+    }
+
+    function onLightsaberUp(e) {
+        if (!lightsaberDrag || e.pointerId !== lightsaberDrag.pointerId) return;
+        const drag = lightsaberDrag;
+        lightsaberDrag = null;
+        try { els.readBtn.releasePointerCapture(e.pointerId); } catch {}
+        delete els.readBtn.dataset.lightsaber;
+        clearLightsaber();
+        if (drag.maxDistance < LIGHTSABER_CLICK_THRESHOLD) return;     // it was a click
+        lightsaberWasDragging = true;                                   // suppress click handler
+        if (drag.length >= LIGHTSABER_MAX_LENGTH * 0.95) enterStarwars();
+    }
+
+    function renderLightsaber(angle) {
+        const blade = els.lightsaberBlade;
+        if (!blade) return;
+        blade.hidden = false;
+        blade.style.left = lightsaberDrag.originX + 'px';
+        blade.style.top = (lightsaberDrag.originY - 4) + 'px';
+        blade.style.width = lightsaberDrag.length + 'px';
+        blade.style.transform = `rotate(${angle}deg)`;
+        blade.dataset.full = lightsaberDrag.length >= LIGHTSABER_MAX_LENGTH * 0.95 ? 'true' : 'false';
+    }
+
+    function clearLightsaber() {
+        const blade = els.lightsaberBlade;
+        if (!blade) return;
+        blade.hidden = true;
+        blade.style.width = '0';
+        delete blade.dataset.full;
     }
 
     function enterStarwars() {
@@ -1593,6 +1669,7 @@ ${body}</div>\n`;
         els.starwarsCrawl = document.getElementById('starwars-crawl');
         els.starwarsPlayBtn = document.getElementById('starwars-play-btn');
         els.starwarsExitBtn = document.getElementById('starwars-exit-btn');
+        els.lightsaberBlade = document.getElementById('lightsaber-blade');
     }
 
     function debounce(fn, wait) {

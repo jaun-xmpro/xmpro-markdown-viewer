@@ -955,9 +955,70 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .viewer-action svg { display: block; }
 
 /* =====================================================================
-   Easter egg: Star Wars opening crawl. Triggered by typing "starwars"
-   anywhere on the page. Iconic yellow text with CSS perspective +
-   slow translateY animation. Plays the read-aloud alongside the scroll.
+   Easter egg: lightsaber drag-to-ignite. Click-and-pull the read-aloud
+   play button; a blade extends from the hilt toward the cursor. When
+   fully extended (~220 px) the blade locks in and the Star Wars
+   opening crawl unlocks.
+   ===================================================================== */
+.lightsaber-blade {
+    position: fixed;
+    pointer-events: none;
+    height: 8px;
+    border-radius: 4px;
+    transform-origin: 0 50%;
+    z-index: 9998;
+    background: linear-gradient(to right,
+        rgba(255,255,255,1) 0%,
+        rgba(255,255,255,1) 6%,
+        #6cf 35%,
+        #4af 70%,
+        #4af 100%);
+    box-shadow:
+        0 0 10px rgba(64, 170, 255, 0.9),
+        0 0 24px rgba(64, 170, 255, 0.7),
+        0 0 44px rgba(64, 170, 255, 0.4);
+}
+.lightsaber-blade[hidden] { display: none; }
+.lightsaber-blade[data-full="true"] {
+    background: linear-gradient(to right,
+        #fff 0%, #fff 14%, #cef 40%, #4af 75%, #4af 100%);
+    box-shadow:
+        0 0 16px #fff,
+        0 0 32px #4af,
+        0 0 64px rgba(64, 170, 255, 0.9);
+    animation: saberHum 0.45s ease-in-out infinite alternate;
+}
+@keyframes saberHum {
+    from { filter: brightness(1) saturate(1); }
+    to   { filter: brightness(1.18) saturate(1.2); }
+}
+
+/* The hilt: the play button while a saber drag is active. */
+.viewer-action[data-lightsaber="active"] {
+    box-shadow: 0 0 18px rgba(64, 170, 255, 0.9), inset 0 0 8px rgba(64, 170, 255, 0.5);
+    color: #4af;
+    background: var(--bg-primary);
+}
+.viewer-action[data-lightsaber="active"] svg { opacity: 0; }
+.viewer-action[data-lightsaber="active"]::after {
+    /* Hilt grip: a tiny dark cylinder where the icon used to be. */
+    content: "";
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #4a5566 0%, #1f2530 50%, #4a5566 100%);
+    box-shadow: 0 0 6px rgba(64, 170, 255, 0.8);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lightsaber-blade[data-full="true"] { animation: none; }
+}
+
+/* =====================================================================
+   Easter egg: Star Wars opening crawl. Unlocked by the lightsaber drag.
    ===================================================================== */
 .starwars-overlay {
     position: fixed;
