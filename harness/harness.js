@@ -71,11 +71,17 @@
     let logEntryCount = 0;
 
     const HARNESS_STORAGE_KEY = 'xmpro-md-harness-state';
+    let saveTimer = null;
     function saveHarnessState() {
-        try {
-            const snapshot = { config: state.config, currentExampleId: state.currentExampleId };
-            localStorage.setItem(HARNESS_STORAGE_KEY, JSON.stringify(snapshot));
-        } catch { /* quota or disabled storage — ignore */ }
+        // Debounce: avoid writing localStorage on every pixel of a slider drag.
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveTimer = null;
+            try {
+                const snapshot = { config: state.config, currentExampleId: state.currentExampleId };
+                localStorage.setItem(HARNESS_STORAGE_KEY, JSON.stringify(snapshot));
+            } catch { /* quota or disabled storage — ignore */ }
+        }, 200);
     }
     function loadHarnessState() {
         try {
@@ -166,7 +172,6 @@
             send('markdown:set-background', payload);
         });
 
-        // Font family
         document.getElementById('ctrl-font').addEventListener('change', e => {
             state.config.font_family = e.target.value;
             saveHarnessState();
@@ -222,7 +227,6 @@
             });
         });
 
-        // Action buttons
         document.getElementById('btn-reload').addEventListener('click', () => {
             state.iframeReady = false;
             iframe.src = iframe.src;
@@ -273,7 +277,6 @@
     function startStreaming() {
         if (!state.currentExample) return;
 
-        // Build a multi-paragraph stream that grows over time
         const baseParas = [
             "## Agent reasoning trace\n\nStarting analysis of incoming dataset.",
             "**Step 1:** Loading historical telemetry for the past 24 hours. Found 14,329 records across 27 assets.",

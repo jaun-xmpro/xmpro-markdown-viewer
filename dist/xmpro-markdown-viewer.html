@@ -1747,6 +1747,9 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
         if (config.background === 'image' && config.background_image_url) {
             root.style.setProperty('--bg-image-url', `url("${escapeCssUrl(config.background_image_url)}")`);
             root.style.setProperty('--bg-overlay', String(config.background_overlay ?? 0.55));
+        } else {
+            root.style.removeProperty('--bg-image-url');
+            root.style.removeProperty('--bg-overlay');
         }
 
         if (config.accent_color) root.style.setProperty('--accent', config.accent_color);
@@ -1807,7 +1810,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     function resetUserPrefs() {
         userPrefs = {};
         savePrefs();
-        applyConfig(docConfig);
+        applyMerged();
         if (config.enable_settings) syncSettingsPopover();
     }
 
@@ -2530,6 +2533,11 @@ ${body}</div>\n`;
         els.stopBtn?.addEventListener('click', stopReading);
     }
 
+    // Sliders fire many `input` events per drag; debounce the persistence
+    // writes so we render every frame but only persist when the user pauses.
+    const persistFontSize = debounce(v => applyUserPref('font_size', v), 250);
+    const persistTtsRate = debounce(v => applyUserPref('tts_rate', v), 250);
+
     function setupSettings() {
         if (!els.settingsBtn || !els.settingsPopover) return;
         els.settingsBtn.addEventListener('click', (e) => {
@@ -2549,34 +2557,25 @@ ${body}</div>\n`;
             els.settingsPopover.hidden = true;
         });
 
-        const themeSel = document.getElementById('settings-theme');
-        const fsizeRange = document.getElementById('settings-font-size');
-        const fsizeDisp = document.getElementById('settings-font-size-display');
-        const widthSel = document.getElementById('settings-width');
-        const voiceSel = document.getElementById('settings-tts-voice');
-        const rateRange = document.getElementById('settings-tts-rate');
-        const rateDisp = document.getElementById('settings-tts-rate-display');
-        const resetBtn = document.getElementById('settings-reset');
-        const footnote = document.getElementById('settings-footnote');
-
-        themeSel.addEventListener('change', () => applyUserPref('theme', themeSel.value || undefined));
-        fsizeRange.addEventListener('input', () => {
-            fsizeDisp.textContent = parseFloat(fsizeRange.value).toFixed(2) + '×';
-            applyUserPref('font_size', parseFloat(fsizeRange.value));
+        els.settingsTheme.addEventListener('change', () =>
+            applyUserPref('theme', els.settingsTheme.value || undefined));
+        els.settingsFsize.addEventListener('input', () => {
+            const v = parseFloat(els.settingsFsize.value);
+            els.settingsFsizeDisp.textContent = v.toFixed(2) + '×';
+            applyConfig({ font_size: v });
+            persistFontSize(v);
         });
-        widthSel.addEventListener('change', () => applyUserPref('content_width', widthSel.value || undefined));
-        voiceSel.addEventListener('change', () => applyUserPref('tts_voice', voiceSel.value || undefined));
-        rateRange.addEventListener('input', () => {
-            rateDisp.textContent = parseFloat(rateRange.value).toFixed(2) + '×';
-            applyUserPref('tts_rate', parseFloat(rateRange.value));
+        els.settingsWidth.addEventListener('change', () =>
+            applyUserPref('content_width', els.settingsWidth.value || undefined));
+        els.settingsVoice.addEventListener('change', () =>
+            applyUserPref('tts_voice', els.settingsVoice.value || undefined));
+        els.settingsRate.addEventListener('input', () => {
+            const v = parseFloat(els.settingsRate.value);
+            els.settingsRateDisp.textContent = v.toFixed(2) + '×';
+            applyConfig({ tts_rate: v });
+            persistTtsRate(v);
         });
-        resetBtn.addEventListener('click', resetUserPrefs);
-
-        if (footnote) {
-            footnote.textContent = config.persist_preferences
-                ? 'Your choices are remembered in this browser.'
-                : 'Choices reset on reload (persist_preferences is off).';
-        }
+        els.settingsReset.addEventListener('click', resetUserPrefs);
 
         if (!('speechSynthesis' in window)) {
             const tBlock = document.getElementById('settings-tts-block');
@@ -2587,34 +2586,34 @@ ${body}</div>\n`;
     }
 
     function syncSettingsPopover() {
-        const themeSel = document.getElementById('settings-theme');
-        const fsizeRange = document.getElementById('settings-font-size');
-        const fsizeDisp = document.getElementById('settings-font-size-display');
-        const widthSel = document.getElementById('settings-width');
-        const rateRange = document.getElementById('settings-tts-rate');
-        const rateDisp = document.getElementById('settings-tts-rate-display');
-        const footnote = document.getElementById('settings-footnote');
-        if (!themeSel) return;
-        themeSel.value = userPrefs.theme || '';
-        fsizeRange.value = userPrefs.font_size ?? docConfig.font_size ?? 1;
-        fsizeDisp.textContent = parseFloat(fsizeRange.value).toFixed(2) + '×';
-        widthSel.value = userPrefs.content_width || '';
-        rateRange.value = userPrefs.tts_rate ?? docConfig.tts_rate ?? 1;
-        rateDisp.textContent = parseFloat(rateRange.value).toFixed(2) + '×';
-        if (footnote) {
-            footnote.textContent = config.persist_preferences
+        if (!els.settingsTheme) return;
+        els.settingsTheme.value = userPrefs.theme || '';
+        const fs = userPrefs.font_size ?? docConfig.font_size ?? 1;
+        els.settingsFsize.value = fs;
+        els.settingsFsizeDisp.textContent = parseFloat(fs).toFixed(2) + '×';
+        els.settingsWidth.value = userPrefs.content_width || '';
+        const rate = userPrefs.tts_rate ?? docConfig.tts_rate ?? 1;
+        els.settingsRate.value = rate;
+        els.settingsRateDisp.textContent = parseFloat(rate).toFixed(2) + '×';
+        if (els.settingsFootnote) {
+            els.settingsFootnote.textContent = config.persist_preferences
                 ? 'Your choices are remembered in this browser.'
                 : 'Choices reset on reload (persist_preferences is off).';
         }
     }
 
+    let voiceListenerPending = false;
     function populateVoiceList() {
-        const sel = document.getElementById('settings-tts-voice');
+        const sel = els.settingsVoice;
         if (!sel || !('speechSynthesis' in window)) return;
         const voices = window.speechSynthesis.getVoices();
         if (!voices.length) {
-            // Voices load asynchronously in some browsers; subscribe once.
-            window.speechSynthesis.addEventListener('voiceschanged', populateVoiceList, { once: true });
+            if (voiceListenerPending) return;
+            voiceListenerPending = true;
+            window.speechSynthesis.addEventListener('voiceschanged', () => {
+                voiceListenerPending = false;
+                populateVoiceList();
+            }, { once: true });
             return;
         }
         if (sel.dataset.populated === 'true') {
@@ -2950,13 +2949,19 @@ ${body}</div>\n`;
                 case 'markdown:set-theme':
                     if (msg.data?.theme) setDocConfig({ theme: msg.data.theme });
                     break;
-                case 'markdown:set-background':
+                case 'markdown:set-background': {
+                    const bg = msg.data?.background ?? docConfig.background;
                     setDocConfig({
-                        background: msg.data?.background ?? docConfig.background,
-                        background_image_url: msg.data?.background_image_url ?? docConfig.background_image_url,
+                        background: bg,
+                        // Clear the image URL when leaving the image background, so
+                        // toggling back doesn't resurrect a stale URL.
+                        background_image_url: bg === 'image'
+                            ? (msg.data?.background_image_url ?? docConfig.background_image_url)
+                            : '',
                         background_overlay: msg.data?.background_overlay ?? docConfig.background_overlay
                     });
                     break;
+                }
                 case 'markdown:update-config':
                     if (msg.data && typeof msg.data === 'object') {
                         setDocConfig(normalizeConfig(msg.data));
@@ -3005,6 +3010,23 @@ ${body}</div>\n`;
         els.stopBtn = document.getElementById('btn-stop-aloud');
         els.settingsBtn = document.getElementById('btn-settings');
         els.settingsPopover = document.getElementById('settings-popover');
+        els.settingsTheme = document.getElementById('settings-theme');
+        els.settingsFsize = document.getElementById('settings-font-size');
+        els.settingsFsizeDisp = document.getElementById('settings-font-size-display');
+        els.settingsWidth = document.getElementById('settings-width');
+        els.settingsVoice = document.getElementById('settings-tts-voice');
+        els.settingsRate = document.getElementById('settings-tts-rate');
+        els.settingsRateDisp = document.getElementById('settings-tts-rate-display');
+        els.settingsReset = document.getElementById('settings-reset');
+        els.settingsFootnote = document.getElementById('settings-footnote');
+    }
+
+    function debounce(fn, wait) {
+        let t = null;
+        return function (...args) {
+            if (t) clearTimeout(t);
+            t = setTimeout(() => { t = null; fn.apply(this, args); }, wait);
+        };
     }
 
     function initOnce() {

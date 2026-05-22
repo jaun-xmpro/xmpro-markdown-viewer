@@ -56,31 +56,31 @@ function serveFile(res, filepath) {
     });
 }
 
+const ROOT_ROUTES = ['/metablock/', '/dist/', '/README.md'];
+
 const server = http.createServer((req, res) => {
     const parsed = url.parse(req.url);
     let pathname = decodeURIComponent(parsed.pathname || '/');
+    // Strip a single leading ../ so links like preview.html → ../metablock/...
+    // resolve the same way as direct /metablock/... requests.
+    if (pathname.startsWith('/../')) pathname = pathname.slice(3);
 
     if (pathname === '/' || pathname === '') {
         return serveFile(res, path.join(HARNESS, 'index.html'));
     }
 
-    // Anything starting with /examples or /metablock resolves relative to project root
     if (pathname.startsWith('/examples/')) {
         const filepath = safeJoin(HARNESS, pathname);
         if (!filepath) { res.statusCode = 403; res.end('403'); return; }
         return serveFile(res, filepath);
     }
 
-    if (pathname.startsWith('/metablock/') || pathname.startsWith('/../metablock/') ||
-        pathname.startsWith('/dist/') || pathname.startsWith('/../dist/') ||
-        pathname === '/README.md' || pathname === '/../README.md') {
-        const cleaned = pathname.replace(/^\/\.\.\//, '/');
-        const filepath = safeJoin(ROOT, cleaned);
+    if (ROOT_ROUTES.some(r => r.endsWith('/') ? pathname.startsWith(r) : pathname === r)) {
+        const filepath = safeJoin(ROOT, pathname);
         if (!filepath) { res.statusCode = 403; res.end('403'); return; }
         return serveFile(res, filepath);
     }
 
-    // Anything else relative to the harness dir
     const filepath = safeJoin(HARNESS, pathname);
     if (!filepath) { res.statusCode = 403; res.end('403'); return; }
     return serveFile(res, filepath);
