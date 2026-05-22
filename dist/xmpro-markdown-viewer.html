@@ -2702,20 +2702,21 @@ ${body}</div>\n`;
         });
     }
 
-    let lightsaberWasDragging = false;
+    let suppressNextClick = false;
 
     function setupReadAloud() {
-        if (!els.readBtn || !('speechSynthesis' in window)) return;
+        if (!els.readBtn) return;
+        // The hold gesture is independent of TTS — wire it even without
+        // speechSynthesis so the Star Wars easter egg is still reachable.
+        setupHoldGesture();
+        if (!('speechSynthesis' in window)) return;
         els.readBtn.addEventListener('click', () => {
-            // A pulled-away drag releases here too; the lightsaber handler
-            // sets this flag so the click is treated as drag-end, not play.
-            if (lightsaberWasDragging) { lightsaberWasDragging = false; return; }
+            if (suppressNextClick) { suppressNextClick = false; return; }
             if (tts.state === 'idle') startReading();
             else if (tts.state === 'playing') pauseReading();
             else resumeReading();
         });
         els.stopBtn?.addEventListener('click', stopReading);
-        setupLightsaberHold();
     }
 
     // Sliders fire many `input` events per drag; debounce the persistence
@@ -2788,8 +2789,6 @@ ${body}</div>\n`;
     }
 
     let voiceListenerPending = false;
-    // Star Wars mode is unlocked by the lightsaber drag-to-ignite below.
-    // Escape exits; the overlay's own play/exit buttons handle the rest.
     function setupStarwars() {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && els.starwarsOverlay && !els.starwarsOverlay.hidden) {
@@ -2800,16 +2799,11 @@ ${body}</div>\n`;
         if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
     }
 
-    // ---- Hold-to-ignite (audio only, no visual blade) ----
-    // Press and hold the read-aloud play button for HOLD_MS. A subtle hum
-    // builds while you hold; at the 8s mark the ignition sound fires and
-    // the Star Wars crawl opens. Release before then → hum fades, no crawl.
     const HOLD_MS = 8000;
-    const HOLD_CLICK_THRESHOLD_MS = 180;
-    let saberHold = null;
+    const HOLD_CLICK_THRESHOLD_MS = 180; // below typical click-vs-press boundary
+    let hold = null;
 
-    function setupLightsaberHold() {
-        if (!els.readBtn) return;
+    function setupHoldGesture() {
         els.readBtn.addEventListener('pointerdown', onHoldStart);
         document.addEventListener('pointerup', onHoldEnd);
         document.addEventListener('pointercancel', onHoldEnd);
@@ -2817,7 +2811,7 @@ ${body}</div>\n`;
 
     function onHoldStart(e) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
-        saberHold = {
+        hold = {
             pointerId: e.pointerId,
             startTime: performance.now(),
             completed: false,
@@ -2829,94 +2823,93 @@ ${body}</div>\n`;
     }
 
     function tickHold() {
-        if (!saberHold || saberHold.completed) return;
-        const elapsed = performance.now() - saberHold.startTime;
-        // Start the hum once we cross the click-vs-hold threshold so a
-        // tap-then-release doesn't briefly play a tone.
-        if (!saberHold.humStarted && elapsed >= HOLD_CLICK_THRESHOLD_MS) {
-            saberHold.humStarted = true;
+        if (!hold || hold.completed) return;
+        const elapsed = performance.now() - hold.startTime;
+        if (!hold.humStarted && elapsed >= HOLD_CLICK_THRESHOLD_MS) {
+            hold.humStarted = true;
             startSaberHum();
         }
         if (elapsed >= HOLD_MS) {
-            saberHold.completed = true;
-            // Set the click-suppression flag NOW so the eventual pointerup
-            // (whenever the user releases) doesn't fire a real click that
-            // starts TTS. cancelHold below clears saberHold, and onHoldEnd
-            // would otherwise early-return without setting this.
-            lightsaberWasDragging = true;
-            stopSaberHum(/* abrupt */ true);
+            hold.completed = true;
+            // Set suppress flag now so the eventual pointerup-induced click
+            // (whenever the user actually releases) doesn't trigger TTS —
+            // cancelHold below clears `hold`, after which onHoldEnd early-
+            // returns without setting this.
+            suppressNextClick = true;
+            stopSaberHum(true);
             playSaberIgnite();
             enterStarwars();
             setTimeout(cancelHold, 600);
             return;
         }
-        saberHold.timerId = setTimeout(tickHold, 50);
+        hold.timerId = setTimeout(tickHold, 50);
     }
 
     function onHoldEnd(e) {
-        if (!saberHold || e.pointerId !== saberHold.pointerId) return;
-        const elapsed = performance.now() - saberHold.startTime;
-        const wasHold = elapsed >= HOLD_CLICK_THRESHOLD_MS;
-        if (!saberHold.completed) cancelHold();
-        if (wasHold) lightsaberWasDragging = true; // suppress click that follows
+        if (!hold || e.pointerId !== hold.pointerId) return;
+        const wasHold = (performance.now() - hold.startTime) >= HOLD_CLICK_THRESHOLD_MS;
+        if (!hold.completed) cancelHold();
+        if (wasHold) suppressNextClick = true;
     }
 
     function cancelHold() {
-        if (!saberHold) return;
-        if (saberHold.timerId) clearTimeout(saberHold.timerId);
-        try { els.readBtn.releasePointerCapture(saberHold.pointerId); } catch {}
-        if (saberHold.humStarted) stopSaberHum(/* abrupt */ false);
-        saberHold = null;
+        if (!hold) return;
+        if (hold.timerId) clearTimeout(hold.timerId);
+        try { els.readBtn.releasePointerCapture(hold.pointerId); } catch {}
+        if (hold.humStarted) stopSaberHum(false);
+        hold = null;
     }
 
-    // ---- Audio: hum during hold + ignition snap at completion ----
-    let humCtx = null, humOsc = null, humGain = null;
+    // Single lazily-created AudioContext shared by hum and ignite. Browsers
+    // limit concurrent contexts per document, so reusing one keeps repeated
+    // hold attempts safe.
+    let audioCtx = null;
+    let humOsc = null, humGain = null;
+    function audio() {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        if (!audioCtx || audioCtx.state === 'closed') audioCtx = new Ctx();
+        if (audioCtx.state === 'suspended') { try { audioCtx.resume(); } catch {} }
+        return audioCtx;
+    }
 
     function startSaberHum() {
+        const ctx = audio();
+        if (!ctx) return;
         try {
-            const Ctx = window.AudioContext || window.webkitAudioContext;
-            if (!Ctx) return;
-            humCtx = new Ctx();
-            humOsc = humCtx.createOscillator();
-            humGain = humCtx.createGain();
+            humOsc = ctx.createOscillator();
+            humGain = ctx.createGain();
             humOsc.type = 'sawtooth';
-            const t = humCtx.currentTime;
-            // Frequency slowly rises 80→120 Hz across the remaining hold —
-            // subtle build that signals "something's about to happen".
+            const t = ctx.currentTime;
+            const remaining = (HOLD_MS - HOLD_CLICK_THRESHOLD_MS) / 1000;
             humOsc.frequency.setValueAtTime(80, t);
-            humOsc.frequency.linearRampToValueAtTime(120, t + (HOLD_MS - HOLD_CLICK_THRESHOLD_MS) / 1000);
-            // Ramp from inaudible to ~0.045 (still quiet) over 8 s.
+            humOsc.frequency.linearRampToValueAtTime(120, t + remaining);
             humGain.gain.setValueAtTime(0.0001, t);
             humGain.gain.exponentialRampToValueAtTime(0.012, t + 0.4);
-            humGain.gain.linearRampToValueAtTime(0.045, t + (HOLD_MS - HOLD_CLICK_THRESHOLD_MS) / 1000);
-            humOsc.connect(humGain).connect(humCtx.destination);
+            humGain.gain.linearRampToValueAtTime(0.045, t + remaining);
+            humOsc.connect(humGain).connect(ctx.destination);
             humOsc.start();
-        } catch { humCtx = null; }
+        } catch {}
     }
 
     function stopSaberHum(abrupt) {
-        if (!humCtx) return;
+        if (!humOsc || !humGain || !audioCtx) return;
         try {
-            const t = humCtx.currentTime;
+            const t = audioCtx.currentTime;
             humGain.gain.cancelScheduledValues(t);
             humGain.gain.setValueAtTime(humGain.gain.value, t);
             humGain.gain.exponentialRampToValueAtTime(0.0001, t + (abrupt ? 0.06 : 0.2));
             humOsc.stop(t + (abrupt ? 0.08 : 0.25));
-            const ctx = humCtx;
-            humOsc.onended = () => { try { ctx.close(); } catch {} };
         } catch {}
-        humCtx = null; humOsc = null; humGain = null;
+        humOsc = null;
+        humGain = null;
     }
 
-    // Subtle synthesised ignition snap — layered sawtooth + triangle for
-    // the iconic vrm-vzz character, no audio file needed.
     function playSaberIgnite() {
+        const ctx = audio();
+        if (!ctx) return;
         try {
-            const Ctx = window.AudioContext || window.webkitAudioContext;
-            if (!Ctx) return;
-            const ctx = new Ctx();
             const now = ctx.currentTime;
-
             const sweep = ctx.createOscillator();
             const sweepGain = ctx.createGain();
             sweep.type = 'sawtooth';
@@ -2941,19 +2934,25 @@ ${body}</div>\n`;
 
             sweep.start(now); sweep.stop(now + 0.85);
             shimmer.start(now); shimmer.stop(now + 0.8);
-            sweep.onended = () => { try { ctx.close(); } catch {} };
-        } catch { /* AudioContext blocked or unavailable — silently skip */ }
+        } catch {}
     }
 
     function enterStarwars() {
         if (!els.starwarsOverlay || !els.starwarsCrawl || !els.content) return;
-        // Clone rendered content; CSS hides the bits that don't suit a crawl.
-        els.starwarsCrawl.innerHTML = els.content.innerHTML;
-        // Reset animations: removing then re-adding .playing forces a fresh
-        // pause→running transition (and a fresh from:top:100% start).
+        // Clone the .md subtree (not the whole viewer-content) so the crawl
+        // contents are a real DOM copy without serialising via innerHTML.
+        // Strip any live search highlights so they don't bleed into the crawl.
+        const md = els.content.querySelector('.md');
+        const cloned = md ? md.cloneNode(true) : els.content.cloneNode(true);
+        cloned.querySelectorAll('.search-highlight').forEach(el => {
+            el.replaceWith(document.createTextNode(el.textContent));
+        });
+        els.starwarsCrawl.replaceChildren(cloned);
         els.starwarsOverlay.classList.remove('playing');
         els.starwarsOverlay.hidden = false;
-        // Force a reflow so the animation restarts cleanly on every entry.
+        // void offsetWidth forces a layout flush so the play-state restart
+        // takes effect — without it, removing+re-adding .playing in one
+        // task is coalesced and the animation doesn't restart from top:100%.
         void els.starwarsOverlay.offsetWidth;
         els.starwarsOverlay.classList.add('playing');
         Logger.info('★ Star Wars mode engaged — may the markdown be with you');
@@ -3005,6 +3004,17 @@ ${body}</div>\n`;
         const excluded = new Set(content.querySelectorAll(
             'pre, code, .mermaid-container, .katex, .frontmatter, .heading-anchor, .footnote-ref, .footnote-backref'
         ));
+        // If startFrom is inside an excluded subtree (e.g. user clicked
+        // inside a code block), advance past the whole block to the next
+        // element. Without this, the walker would reject startFrom itself
+        // and silently fall back to reading from the document start.
+        if (startFrom) {
+            let outermostExcluded = null;
+            for (let el = startFrom; el && el !== content; el = el.parentElement) {
+                if (excluded.has(el)) outermostExcluded = el;
+            }
+            if (outermostExcluded) startFrom = outermostExcluded.nextElementSibling || null;
+        }
         const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
             acceptNode(node) {
                 const p = node.parentElement;
@@ -3021,10 +3031,8 @@ ${body}</div>\n`;
         let started = !startFrom;
         while ((n = walker.nextNode())) {
             if (!started) {
-                // Bit 4 = DOCUMENT_POSITION_FOLLOWING (n comes after startFrom).
-                // pos === 0 means same node. Either case: start collecting.
                 const pos = startFrom.compareDocumentPosition(n);
-                if (!(pos === 0 || (pos & 4))) continue;
+                if (!(pos === 0 || (pos & Node.DOCUMENT_POSITION_FOLLOWING))) continue;
                 started = true;
             }
             parts.push(n.nodeValue);
