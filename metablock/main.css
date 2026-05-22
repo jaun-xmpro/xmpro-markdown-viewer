@@ -906,6 +906,54 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Floating doc actions: stats pill + read-aloud + print */
+.viewer-actions {
+    position: absolute;
+    top: 0.85rem;
+    right: 0.85rem;
+    z-index: 30;
+    display: none;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.6rem;
+    background: color-mix(in srgb, var(--bg-primary) 90%, transparent);
+    border: 1px solid var(--border-light);
+    border-radius: 999px;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    font-size: var(--font-size-xs);
+    line-height: 1;
+}
+.viewer-actions:has(> *:not([hidden])) { display: inline-flex; }
+
+.reading-stats {
+    color: var(--text-tertiary);
+    font-weight: 500;
+    white-space: nowrap;
+    padding: 0 0.25rem;
+}
+.reading-stats[hidden] { display: none; }
+
+.viewer-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 0;
+    transition: background var(--anim-fast), color var(--anim-fast);
+}
+.viewer-action:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.viewer-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.viewer-action[data-state="playing"] { color: var(--accent); }
+.viewer-action svg { display: block; }
+
 /* Progress bar */
 .progress-bar {
     position: fixed;
@@ -1112,7 +1160,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     .viewer-root { background: white !important; color: black !important; min-height: auto; }
     .viewer-root::before, .viewer-root::after { display: none !important; }
     .toc, .toc-fab, .toc-drawer, .progress-bar, .search-overlay, .lightbox,
-    .md .code-copy, .md .code-header { display: none !important; }
+    .viewer-actions, .md .code-copy, .md .code-header { display: none !important; }
     .viewer-scroll { height: auto; overflow: visible; }
     .viewer-layout { display: block; padding: 0; max-width: none; }
     .viewer-content { max-width: none; }

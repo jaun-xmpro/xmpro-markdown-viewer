@@ -90,6 +90,10 @@
         enable_progress_bar: false,
         enable_image_zoom: true,
         enable_search: true,
+        enable_print: true,
+        enable_read_aloud: true,
+        enable_reading_stats: true,
+        tts_rate: 1.0,
         animation_level: 'subtle',
         links_target: '_blank',
         auto_scroll_to_anchor: true,
@@ -111,6 +115,7 @@
     let mermaidLoaded = false;
     let scrollSpyObserver = null;
     let searchState = { matches: [], current: -1, query: '' };
+    const tts = { state: 'idle', utterance: null };
     let lastFetchedUrl = null;
     let lastFetchedContent = null;
     let darkMQ = null;
@@ -178,12 +183,14 @@
             'code_line_numbers', 'code_copy_button', 'code_wrap',
             'enable_toc', 'enable_math', 'enable_diagrams', 'enable_anchors',
             'enable_progress_bar', 'enable_image_zoom', 'enable_search',
+            'enable_print', 'enable_read_aloud', 'enable_reading_stats',
             'auto_scroll_to_anchor', 'frontmatter_display', 'debug'
         ];
         for (const k of bools) {
             if (k in cfg) cfg[k] = cfg[k] === true || cfg[k] === 'true' || cfg[k] === 1;
         }
         if ('font_size' in cfg) cfg.font_size = parseFloat(cfg.font_size) || 1;
+        if ('tts_rate' in cfg) cfg.tts_rate = Math.max(0.5, Math.min(2, parseFloat(cfg.tts_rate) || 1));
         if ('background_overlay' in cfg) {
             const n = parseFloat(cfg.background_overlay);
             cfg.background_overlay = isNaN(n) ? 0.55 : Math.max(0, Math.min(1, n));
@@ -234,6 +241,14 @@
 
         const pb = document.getElementById('progress-bar');
         if (pb) pb.hidden = !config.enable_progress_bar;
+
+        const printBtn = document.getElementById('btn-print');
+        if (printBtn) printBtn.hidden = !config.enable_print;
+        const readBtn = document.getElementById('btn-read-aloud');
+        if (readBtn) readBtn.hidden = !config.enable_read_aloud || !('speechSynthesis' in window);
+        const stopBtn = document.getElementById('btn-stop-aloud');
+        if (stopBtn && (!config.enable_read_aloud || tts.state === 'idle')) stopBtn.hidden = true;
+        if (!config.enable_read_aloud && tts.state !== 'idle') stopReading();
     }
 
     function applyFont(root) {
@@ -602,6 +617,8 @@ ${body}</div>\n`;
 
         const headings = Array.from(contentEl.querySelectorAll('h1,h2,h3,h4,h5,h6')).map(headingMeta);
         const wordCount = (contentEl.textContent.match(/\S+/g) || []).length;
+        updateReadingStats(wordCount);
+        if (tts.state !== 'idle') stopReading();
         sendMessage('markdown:loaded', { source, wordCount, headings, hasMath, hasDiagrams });
 
         if (config.auto_scroll_to_anchor && window.location.hash) {
@@ -901,6 +918,117 @@ ${body}</div>\n`;
         headings.forEach(h => scrollSpyObserver.observe(h));
     }
 
+    function updateReadingStats(wordCount) {
+        const el = document.getElementById('reading-stats');
+        if (!el) return;
+        if (!config.enable_reading_stats || wordCount <= 0) {
+            el.hidden = true;
+            return;
+        }
+        const minutes = Math.max(1, Math.round(wordCount / 200));
+        el.textContent = `${minutes} min read · ${wordCount.toLocaleString()} words`;
+        el.hidden = false;
+    }
+
+    function setupPrint() {
+        const btn = document.getElementById('btn-print');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+            sendMessage('markdown:print-requested', {});
+            window.print();
+        });
+    }
+
+    function setupReadAloud() {
+        const playBtn = document.getElementById('btn-read-aloud');
+        const stopBtn = document.getElementById('btn-stop-aloud');
+        if (!playBtn || !('speechSynthesis' in window)) return;
+        playBtn.addEventListener('click', () => {
+            if (tts.state === 'idle') startReading();
+            else if (tts.state === 'playing') pauseReading();
+            else resumeReading();
+        });
+        stopBtn?.addEventListener('click', stopReading);
+    }
+
+    function getReadableText() {
+        const content = document.getElementById('viewer-content');
+        if (!content) return '';
+        const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+            acceptNode(node) {
+                const p = node.parentElement;
+                if (!p) return NodeFilter.FILTER_REJECT;
+                if (/SCRIPT|STYLE/.test(p.tagName)) return NodeFilter.FILTER_REJECT;
+                if (p.closest('pre, code, .mermaid-container, .katex, .frontmatter, .heading-anchor, .footnote-ref, .footnote-backref')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+            }
+        });
+        const parts = [];
+        let n;
+        while ((n = walker.nextNode())) parts.push(n.nodeValue);
+        return parts.join(' ').replace(/\s+/g, ' ').trim();
+    }
+
+    function startReading() {
+        const text = getReadableText();
+        if (!text) return;
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = config.tts_rate || 1;
+        u.pitch = 1;
+        u.onend = () => { tts.state = 'idle'; tts.utterance = null; updateReadAloudUI(); sendMessage('markdown:read-aloud-ended', {}); };
+        u.onerror = () => { tts.state = 'idle'; tts.utterance = null; updateReadAloudUI(); };
+        tts.utterance = u;
+        try { window.speechSynthesis.speak(u); } catch (e) { Logger.warn('TTS failed', e); return; }
+        tts.state = 'playing';
+        updateReadAloudUI();
+        sendMessage('markdown:read-aloud-started', { wordCount: (text.match(/\S+/g) || []).length });
+    }
+
+    function pauseReading() {
+        try { window.speechSynthesis.pause(); } catch {}
+        tts.state = 'paused';
+        updateReadAloudUI();
+    }
+
+    function resumeReading() {
+        try { window.speechSynthesis.resume(); } catch {}
+        tts.state = 'playing';
+        updateReadAloudUI();
+    }
+
+    function stopReading() {
+        try { window.speechSynthesis.cancel(); } catch {}
+        tts.utterance = null;
+        tts.state = 'idle';
+        updateReadAloudUI();
+    }
+
+    function updateReadAloudUI() {
+        const playBtn = document.getElementById('btn-read-aloud');
+        const stopBtn = document.getElementById('btn-stop-aloud');
+        if (!playBtn || !stopBtn) return;
+        const PLAY_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+        const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+        if (tts.state === 'idle') {
+            playBtn.innerHTML = PLAY_ICON;
+            playBtn.setAttribute('aria-label', 'Read aloud');
+            playBtn.removeAttribute('data-state');
+            stopBtn.hidden = true;
+        } else if (tts.state === 'playing') {
+            playBtn.innerHTML = PAUSE_ICON;
+            playBtn.setAttribute('aria-label', 'Pause reading');
+            playBtn.setAttribute('data-state', 'playing');
+            stopBtn.hidden = false;
+        } else {
+            playBtn.innerHTML = PLAY_ICON;
+            playBtn.setAttribute('aria-label', 'Resume reading');
+            playBtn.setAttribute('data-state', 'paused');
+            stopBtn.hidden = false;
+        }
+    }
+
     function setupProgressBar() {
         const fill = document.getElementById('progress-bar-fill');
         const scroll = document.getElementById('viewer-scroll');
@@ -1144,6 +1272,8 @@ ${body}</div>\n`;
         setupLightbox();
         setupTocDrawer();
         setupSearch();
+        setupPrint();
+        setupReadAloud();
 
         document.getElementById('toc-list').addEventListener('click', handleTocClick);
         document.getElementById('toc-drawer-list').addEventListener('click', handleTocClick);

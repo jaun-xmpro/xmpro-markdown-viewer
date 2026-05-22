@@ -77,6 +77,10 @@ When both are set they override `font_family`. The URL must use `http://` or `ht
 | `enable_progress_bar` | bool | `false` | Fixed reading progress at top |
 | `enable_image_zoom` | bool | `true` | Click image to open lightbox |
 | `enable_search` | bool | `true` | Ctrl/Cmd-F in-document search overlay |
+| `enable_print` | bool | `true` | Print button in the floating actions toolbar |
+| `enable_read_aloud` | bool | `true` | Text-to-speech via Web Speech API; hidden if browser unsupported |
+| `enable_reading_stats` | bool | `true` | Word count + estimated read time in the floating actions pill |
+| `tts_rate` | 0.5–2 | `1.0` | Read-aloud speech rate multiplier |
 
 ## Behaviour
 
@@ -107,6 +111,9 @@ The metablock exchanges JSON messages with the parent window:
 | `markdown:link-clicked` | `{ href, text, internal }` |
 | `markdown:heading-clicked` | `{ id, text, level }` |
 | `markdown:scroll-progress` | `{ percent }` (throttled to 200ms when `enable_progress_bar`) |
+| `markdown:print-requested` | `{}` — fired before `window.print()` |
+| `markdown:read-aloud-started` | `{ wordCount }` |
+| `markdown:read-aloud-ended` | `{}` |
 
 ### Accepted (parent → metablock)
 
