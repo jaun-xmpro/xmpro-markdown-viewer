@@ -115,7 +115,11 @@
     let mermaidLoaded = false;
     let scrollSpyObserver = null;
     let searchState = { matches: [], current: -1, query: '' };
-    const tts = { state: 'idle', utterance: null };
+    const tts = { state: 'idle', queue: [], index: 0 };
+    let lastTtsUiState = null;
+    let lastWordCount = 0;
+    let currentCustomFontLink = null;
+    const els = {};
     let lastFetchedUrl = null;
     let lastFetchedContent = null;
     let darkMQ = null;
@@ -239,24 +243,24 @@
 
         root.style.setProperty('--font-scale', String(config.font_size || 1));
 
-        const pb = document.getElementById('progress-bar');
-        if (pb) pb.hidden = !config.enable_progress_bar;
-
-        const printBtn = document.getElementById('btn-print');
-        if (printBtn) printBtn.hidden = !config.enable_print;
-        const readBtn = document.getElementById('btn-read-aloud');
-        if (readBtn) readBtn.hidden = !config.enable_read_aloud || !('speechSynthesis' in window);
-        const stopBtn = document.getElementById('btn-stop-aloud');
-        if (stopBtn && (!config.enable_read_aloud || tts.state === 'idle')) stopBtn.hidden = true;
+        if (els.progressBar) els.progressBar.hidden = !config.enable_progress_bar;
+        if (els.printBtn) els.printBtn.hidden = !config.enable_print;
+        if (els.readBtn) els.readBtn.hidden = !config.enable_read_aloud || !('speechSynthesis' in window);
+        if (els.stopBtn && (!config.enable_read_aloud || tts.state === 'idle')) els.stopBtn.hidden = true;
         if (!config.enable_read_aloud && tts.state !== 'idle') stopReading();
     }
 
     function applyFont(root) {
-        // Custom URL + name overrides everything else.
-        if (config.font_family_url && config.font_family_name) {
+        const hasUrl = !!config.font_family_url;
+        const hasName = !!config.font_family_name;
+        if (hasUrl !== hasName) {
+            Logger.warn('Custom font requires both font_family_url and font_family_name; ignoring partial config');
+        }
+
+        if (hasUrl && hasName) {
             const url = validateUrl(config.font_family_url);
             if (url) {
-                loadFontStylesheet(url);
+                loadFontStylesheet(url, { isCustom: true });
                 root.setAttribute('data-font', 'custom');
                 root.style.setProperty('--font-family-custom',
                     `${config.font_family_name}, ${getSystemFontFallback(config.font_family)}`);
@@ -264,6 +268,7 @@
             }
             Logger.warn('Invalid font_family_url (must be http/https):', config.font_family_url);
         }
+        clearCustomFontLink();
         root.style.removeProperty('--font-family-custom');
 
         const family = config.font_family || 'system';
@@ -273,8 +278,6 @@
     }
 
     function getSystemFontFallback(familyHint) {
-        // Pick a sensible system fallback so the user's font swaps in over
-        // something close in shape rather than a jarring default.
         if (familyHint === 'serif' || familyHint === 'lora' || familyHint === 'source-serif') {
             return "'Iowan Old Style', Georgia, serif";
         }
@@ -284,16 +287,30 @@
         return "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     }
 
-    function loadFontStylesheet(url) {
+    function loadFontStylesheet(url, { isCustom = false } = {}) {
         if (loadedFontUrls.has(url)) return;
+        if (isCustom) clearCustomFontLink();
         loadedFontUrls.add(url);
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = url;
         link.crossOrigin = 'anonymous';
-        link.dataset.fontPreset = 'true';
+        link.dataset.fontPreset = String(!isCustom);
+        link.onerror = () => {
+            Logger.warn('Font stylesheet failed to load:', url);
+            loadedFontUrls.delete(url);
+            if (isCustom && currentCustomFontLink === link) currentCustomFontLink = null;
+        };
         document.head.appendChild(link);
+        if (isCustom) currentCustomFontLink = link;
         Logger.debug('Loaded font stylesheet:', url);
+    }
+
+    function clearCustomFontLink() {
+        if (!currentCustomFontLink) return;
+        loadedFontUrls.delete(currentCustomFontLink.href);
+        currentCustomFontLink.remove();
+        currentCustomFontLink = null;
     }
 
     function onValueMappingLoaded(data) {
@@ -487,6 +504,9 @@ ${body}</div>\n`;
     }
 
     function extractFootnotes(text) {
+        // Cheap pre-scan: most docs don't have footnotes, skip all line work.
+        if (!text.includes('[^')) return { body: text, defs: new Map(), order: [] };
+
         const defs = new Map();
         const order = [];
         const lines = text.split('\n');
@@ -616,10 +636,10 @@ ${body}</div>\n`;
         else hideTOC();
 
         const headings = Array.from(contentEl.querySelectorAll('h1,h2,h3,h4,h5,h6')).map(headingMeta);
-        const wordCount = (contentEl.textContent.match(/\S+/g) || []).length;
-        updateReadingStats(wordCount);
+        lastWordCount = (contentEl.textContent.match(/\S+/g) || []).length;
+        updateReadingStats(lastWordCount);
         if (tts.state !== 'idle') stopReading();
-        sendMessage('markdown:loaded', { source, wordCount, headings, hasMath, hasDiagrams });
+        sendMessage('markdown:loaded', { source, wordCount: lastWordCount, headings, hasMath, hasDiagrams });
 
         if (config.auto_scroll_to_anchor && window.location.hash) {
             setTimeout(() => {
@@ -919,7 +939,7 @@ ${body}</div>\n`;
     }
 
     function updateReadingStats(wordCount) {
-        const el = document.getElementById('reading-stats');
+        const el = els.readingStats || document.getElementById('reading-stats');
         if (!el) return;
         if (!config.enable_reading_stats || wordCount <= 0) {
             el.hidden = true;
@@ -931,36 +951,36 @@ ${body}</div>\n`;
     }
 
     function setupPrint() {
-        const btn = document.getElementById('btn-print');
-        if (!btn) return;
-        btn.addEventListener('click', () => {
+        if (!els.printBtn) return;
+        els.printBtn.addEventListener('click', () => {
             sendMessage('markdown:print-requested', {});
             window.print();
         });
     }
 
     function setupReadAloud() {
-        const playBtn = document.getElementById('btn-read-aloud');
-        const stopBtn = document.getElementById('btn-stop-aloud');
-        if (!playBtn || !('speechSynthesis' in window)) return;
-        playBtn.addEventListener('click', () => {
+        if (!els.readBtn || !('speechSynthesis' in window)) return;
+        els.readBtn.addEventListener('click', () => {
             if (tts.state === 'idle') startReading();
             else if (tts.state === 'playing') pauseReading();
             else resumeReading();
         });
-        stopBtn?.addEventListener('click', stopReading);
+        els.stopBtn?.addEventListener('click', stopReading);
     }
 
     function getReadableText() {
-        const content = document.getElementById('viewer-content');
+        const content = els.content || document.getElementById('viewer-content');
         if (!content) return '';
+        const excluded = new Set(content.querySelectorAll(
+            'pre, code, .mermaid-container, .katex, .frontmatter, .heading-anchor, .footnote-ref, .footnote-backref'
+        ));
         const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
             acceptNode(node) {
                 const p = node.parentElement;
                 if (!p) return NodeFilter.FILTER_REJECT;
                 if (/SCRIPT|STYLE/.test(p.tagName)) return NodeFilter.FILTER_REJECT;
-                if (p.closest('pre, code, .mermaid-container, .katex, .frontmatter, .heading-anchor, .footnote-ref, .footnote-backref')) {
-                    return NodeFilter.FILTER_REJECT;
+                for (let el = p; el && el !== content; el = el.parentElement) {
+                    if (excluded.has(el)) return NodeFilter.FILTER_REJECT;
                 }
                 return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
             }
@@ -971,19 +991,54 @@ ${body}</div>\n`;
         return parts.join(' ').replace(/\s+/g, ' ').trim();
     }
 
+    // Chrome silently truncates SpeechSynthesisUtterance at ~32 KB and can drop
+    // long utterances on a ~15s silence timeout. Chunking at sentence
+    // boundaries keeps every chunk safely below that threshold.
+    const TTS_CHUNK_LEN = 2000;
+    function chunkText(text) {
+        if (text.length <= TTS_CHUNK_LEN) return [text];
+        const chunks = [];
+        let rest = text;
+        while (rest.length > TTS_CHUNK_LEN) {
+            let cut = rest.lastIndexOf('. ', TTS_CHUNK_LEN);
+            if (cut < TTS_CHUNK_LEN / 2) cut = rest.lastIndexOf(' ', TTS_CHUNK_LEN);
+            if (cut < 0) cut = TTS_CHUNK_LEN;
+            else cut += 1;
+            chunks.push(rest.slice(0, cut).trim());
+            rest = rest.slice(cut).trimStart();
+        }
+        if (rest) chunks.push(rest);
+        return chunks;
+    }
+
     function startReading() {
         const text = getReadableText();
         if (!text) return;
-        const u = new SpeechSynthesisUtterance(text);
+        tts.queue = chunkText(text);
+        tts.index = 0;
+        tts.state = 'playing';   // set BEFORE speak() — onend may fire synchronously on empty chunks
+        updateReadAloudUI();
+        sendMessage('markdown:read-aloud-started', { wordCount: lastWordCount, chunks: tts.queue.length });
+        speakNextChunk();
+    }
+
+    function speakNextChunk() {
+        if (tts.state === 'idle') return;
+        if (tts.index >= tts.queue.length) {
+            tts.state = 'idle';
+            tts.queue = [];
+            tts.index = 0;
+            updateReadAloudUI();
+            sendMessage('markdown:read-aloud-ended', {});
+            return;
+        }
+        const u = new SpeechSynthesisUtterance(tts.queue[tts.index]);
         u.rate = config.tts_rate || 1;
         u.pitch = 1;
-        u.onend = () => { tts.state = 'idle'; tts.utterance = null; updateReadAloudUI(); sendMessage('markdown:read-aloud-ended', {}); };
-        u.onerror = () => { tts.state = 'idle'; tts.utterance = null; updateReadAloudUI(); };
-        tts.utterance = u;
-        try { window.speechSynthesis.speak(u); } catch (e) { Logger.warn('TTS failed', e); return; }
-        tts.state = 'playing';
-        updateReadAloudUI();
-        sendMessage('markdown:read-aloud-started', { wordCount: (text.match(/\S+/g) || []).length });
+        u.onend = () => { tts.index++; speakNextChunk(); };
+        u.onerror = () => stopReading();
+        try { window.speechSynthesis.speak(u); }
+        catch (e) { Logger.warn('TTS failed', e); stopReading(); }
     }
 
     function pauseReading() {
@@ -1000,32 +1055,34 @@ ${body}</div>\n`;
 
     function stopReading() {
         try { window.speechSynthesis.cancel(); } catch {}
-        tts.utterance = null;
         tts.state = 'idle';
+        tts.queue = [];
+        tts.index = 0;
         updateReadAloudUI();
     }
 
+    const PLAY_ICON_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    const PAUSE_ICON_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+
     function updateReadAloudUI() {
-        const playBtn = document.getElementById('btn-read-aloud');
-        const stopBtn = document.getElementById('btn-stop-aloud');
-        if (!playBtn || !stopBtn) return;
-        const PLAY_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-        const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+        if (tts.state === lastTtsUiState) return;
+        lastTtsUiState = tts.state;
+        if (!els.readBtn || !els.stopBtn) return;
         if (tts.state === 'idle') {
-            playBtn.innerHTML = PLAY_ICON;
-            playBtn.setAttribute('aria-label', 'Read aloud');
-            playBtn.removeAttribute('data-state');
-            stopBtn.hidden = true;
+            els.readBtn.innerHTML = PLAY_ICON_SVG;
+            els.readBtn.setAttribute('aria-label', 'Read aloud');
+            els.readBtn.removeAttribute('data-state');
+            els.stopBtn.hidden = true;
         } else if (tts.state === 'playing') {
-            playBtn.innerHTML = PAUSE_ICON;
-            playBtn.setAttribute('aria-label', 'Pause reading');
-            playBtn.setAttribute('data-state', 'playing');
-            stopBtn.hidden = false;
+            els.readBtn.innerHTML = PAUSE_ICON_SVG;
+            els.readBtn.setAttribute('aria-label', 'Pause reading');
+            els.readBtn.setAttribute('data-state', 'playing');
+            els.stopBtn.hidden = false;
         } else {
-            playBtn.innerHTML = PLAY_ICON;
-            playBtn.setAttribute('aria-label', 'Resume reading');
-            playBtn.setAttribute('data-state', 'paused');
-            stopBtn.hidden = false;
+            els.readBtn.innerHTML = PLAY_ICON_SVG;
+            els.readBtn.setAttribute('aria-label', 'Resume reading');
+            els.readBtn.setAttribute('data-state', 'paused');
+            els.stopBtn.hidden = false;
         }
     }
 
@@ -1266,7 +1323,18 @@ ${body}</div>\n`;
 </div>`;
     }
 
+    function cacheElements() {
+        els.root = document.getElementById('viewer-root');
+        els.content = document.getElementById('viewer-content');
+        els.progressBar = document.getElementById('progress-bar');
+        els.readingStats = document.getElementById('reading-stats');
+        els.printBtn = document.getElementById('btn-print');
+        els.readBtn = document.getElementById('btn-read-aloud');
+        els.stopBtn = document.getElementById('btn-stop-aloud');
+    }
+
     function initOnce() {
+        cacheElements();
         setupMessageListener();
         setupProgressBar();
         setupLightbox();
