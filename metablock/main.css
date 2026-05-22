@@ -1050,15 +1050,15 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     position: absolute;
     top: 100%;
     left: 50%;
-    width: min(70%, 700px);
+    width: min(88%, 1100px);
     transform: translateX(-50%) rotateX(25deg);
     transform-origin: 50% 100%;
     color: #FFE81F;
     font-weight: 700;
     text-align: justify;
-    font-size: clamp(1.4rem, 3vw, 2.2rem);
-    line-height: 1.35;
-    text-shadow: 0 0 8px rgba(255, 232, 31, 0.25);
+    font-size: clamp(1.8rem, 3.6vw, 3rem);
+    line-height: 1.4;
+    text-shadow: 0 0 10px rgba(255, 232, 31, 0.3);
     /* Animation is always declared, but only runs when .playing is on the
        overlay. Toggling pauses/resumes in place — no jumps. */
     animation-name: swCrawl;
@@ -1073,18 +1073,25 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     to   { top: -400%; }
 }
 
-/* Style the markdown content cloned into the crawl. */
-.starwars-crawl h1, .starwars-crawl h2, .starwars-crawl h3,
-.starwars-crawl h4, .starwars-crawl h5, .starwars-crawl h6 {
+/* Style the markdown content cloned into the crawl. Specificity is
+   bumped via the .md container (which the cloned content always has)
+   so these win against the original `.md h1` rules at the same
+   selector specificity defined earlier in the file. */
+.starwars-crawl .md h1, .starwars-crawl .md h2, .starwars-crawl .md h3,
+.starwars-crawl .md h4, .starwars-crawl .md h5, .starwars-crawl .md h6 {
     text-align: center;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
     margin: 1.4em 0 0.7em;
     color: #FFE81F;
+    line-height: 1.2;
+    border-bottom: none;
+    padding: 0;
 }
-.starwars-crawl h1 { font-size: 1.4em; }
-.starwars-crawl h2 { font-size: 1.2em; }
-.starwars-crawl p { margin: 0 0 1em; }
+.starwars-crawl .md h1 { font-size: 1.5em; }
+.starwars-crawl .md h2 { font-size: 1.3em; }
+.starwars-crawl .md h3 { font-size: 1.15em; }
+.starwars-crawl .md p { margin: 0 0 1.1em; }
 .starwars-crawl a { color: #FFE81F; text-decoration: underline; }
 .starwars-crawl strong { color: #fff; }
 .starwars-crawl em { font-style: italic; }
