@@ -113,6 +113,27 @@
         </button>
     </div>
 
+    <div class="starwars-overlay" id="starwars-overlay" hidden>
+        <div class="starwars-stars" aria-hidden="true"></div>
+        <div class="starwars-controls">
+            <button class="starwars-btn" id="starwars-play-btn" aria-label="Play scroll" title="Play / Pause">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+            </button>
+            <button class="starwars-btn" id="starwars-exit-btn" aria-label="Exit Star Wars mode" title="Exit (Esc)">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+        </div>
+        <div class="starwars-intro" id="starwars-intro">A long time ago in a galaxy far, far away....</div>
+        <div class="starwars-stage">
+            <div class="starwars-crawl" id="starwars-crawl"></div>
+        </div>
+    </div>
+
     <div class="settings-popover" id="settings-popover" hidden>
         <div class="settings-title">Reader settings</div>
         <div class="settings-section">
@@ -1181,6 +1202,148 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .viewer-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .viewer-action[data-state="playing"] { color: var(--accent); }
 .viewer-action svg { display: block; }
+
+/* =====================================================================
+   Easter egg: Star Wars opening crawl. Triggered by typing "starwars"
+   anywhere on the page. Iconic yellow text with CSS perspective +
+   slow translateY animation. Plays the read-aloud alongside the scroll.
+   ===================================================================== */
+.starwars-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    color: #FFE81F;
+    font-family: 'Trebuchet MS', 'Helvetica Neue', Arial, sans-serif;
+    z-index: 9999;
+    overflow: hidden;
+}
+.starwars-overlay[hidden] { display: none; }
+
+.starwars-stars {
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(1px 1px at 12% 18%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 33% 47%, #fff, transparent 60%),
+        radial-gradient(2px 2px at 51% 12%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 67% 81%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 82% 33%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 91% 62%, #fff, transparent 60%),
+        radial-gradient(2px 2px at 19% 88%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 44% 95%, #fff, transparent 60%);
+    opacity: 0.9;
+    pointer-events: none;
+}
+
+.starwars-controls {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    z-index: 10;
+}
+.starwars-btn {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 232, 31, 0.08);
+    border: 1px solid #FFE81F;
+    border-radius: 50%;
+    color: #FFE81F;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+.starwars-btn:hover { background: rgba(255, 232, 31, 0.2); transform: translateY(-1px); }
+.starwars-btn:focus-visible { outline: 2px solid #FFE81F; outline-offset: 3px; }
+.starwars-overlay.playing #starwars-play-btn polygon { display: none; }
+.starwars-overlay.playing #starwars-play-btn::before {
+    content: "";
+    width: 14px; height: 14px;
+    background:
+        linear-gradient(#FFE81F, #FFE81F) left/4px 100% no-repeat,
+        linear-gradient(#FFE81F, #FFE81F) right/4px 100% no-repeat;
+}
+
+.starwars-intro {
+    position: absolute;
+    top: 38%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 700px;
+    text-align: center;
+    color: #4af;
+    font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+    opacity: 0;
+}
+.starwars-overlay.playing .starwars-intro {
+    animation: swIntro 6s ease-in-out forwards;
+}
+@keyframes swIntro {
+    0%   { opacity: 0; }
+    15%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.starwars-stage {
+    position: absolute;
+    inset: 0;
+    perspective: 400px;
+    perspective-origin: 50% 100%;
+    overflow: hidden;
+}
+.starwars-crawl {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    width: min(70%, 700px);
+    transform: translateX(-50%) rotateX(25deg);
+    transform-origin: 50% 100%;
+    color: #FFE81F;
+    font-weight: 700;
+    text-align: justify;
+    font-size: clamp(1.4rem, 3vw, 2.2rem);
+    line-height: 1.35;
+    text-shadow: 0 0 8px rgba(255, 232, 31, 0.25);
+}
+.starwars-overlay.playing .starwars-crawl {
+    animation: swCrawl 120s linear forwards;
+    animation-delay: 5.5s;
+}
+@keyframes swCrawl {
+    0%   { top: 100%; }
+    100% { top: -400%; }
+}
+
+/* Style the markdown content cloned into the crawl. */
+.starwars-crawl h1, .starwars-crawl h2, .starwars-crawl h3,
+.starwars-crawl h4, .starwars-crawl h5, .starwars-crawl h6 {
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 1.4em 0 0.7em;
+    color: #FFE81F;
+}
+.starwars-crawl h1 { font-size: 1.4em; }
+.starwars-crawl h2 { font-size: 1.2em; }
+.starwars-crawl p { margin: 0 0 1em; }
+.starwars-crawl a { color: #FFE81F; text-decoration: underline; }
+.starwars-crawl strong { color: #fff; }
+.starwars-crawl em { font-style: italic; }
+/* Hide content types that don't suit a perspective crawl. */
+.starwars-crawl pre, .starwars-crawl code, .starwars-crawl table,
+.starwars-crawl figure, .starwars-crawl img, .starwars-crawl .mermaid-container,
+.starwars-crawl .katex-display, .starwars-crawl .callout,
+.starwars-crawl .frontmatter, .starwars-crawl .heading-anchor,
+.starwars-crawl .footnote-ref, .starwars-crawl .footnote-backref,
+.starwars-crawl .footnotes { display: none; }
+.starwars-crawl ul, .starwars-crawl ol { padding-left: 1.5em; }
+
+@media (prefers-reduced-motion: reduce) {
+    .starwars-overlay.playing .starwars-crawl,
+    .starwars-overlay.playing .starwars-intro { animation: none; opacity: 1; }
+}
 
 /* Reader settings popover */
 .settings-popover {
@@ -2603,6 +2766,57 @@ ${body}</div>\n`;
     }
 
     let voiceListenerPending = false;
+    // Easter egg: type "starwars" anywhere to enter the opening-crawl mode.
+    function setupStarwars() {
+        let buf = '';
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && els.starwarsOverlay && !els.starwarsOverlay.hidden) {
+                exitStarwars();
+                return;
+            }
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            if (e.key.length !== 1) { buf = ''; return; }
+            buf = (buf + e.key.toLowerCase()).slice(-10);
+            if (buf.endsWith('starwars')) {
+                buf = '';
+                enterStarwars();
+            }
+        });
+        if (els.starwarsPlayBtn) els.starwarsPlayBtn.addEventListener('click', toggleStarwarsPlay);
+        if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
+    }
+
+    function enterStarwars() {
+        if (!els.starwarsOverlay || !els.starwarsCrawl || !els.content) return;
+        // Clone the rendered content into the crawl so it picks up paragraphs,
+        // headings, lists, etc. — CSS strips the bits that don't suit a crawl.
+        els.starwarsCrawl.innerHTML = els.content.innerHTML;
+        els.starwarsOverlay.hidden = false;
+        els.starwarsOverlay.classList.remove('playing');
+        Logger.info('★ Star Wars mode engaged — may the markdown be with you');
+    }
+
+    function exitStarwars() {
+        if (!els.starwarsOverlay) return;
+        els.starwarsOverlay.hidden = true;
+        els.starwarsOverlay.classList.remove('playing');
+        if (tts.state !== 'idle') stopReading();
+    }
+
+    function toggleStarwarsPlay() {
+        if (!els.starwarsOverlay) return;
+        const isPlaying = els.starwarsOverlay.classList.contains('playing');
+        if (isPlaying) {
+            els.starwarsOverlay.classList.remove('playing');
+            if (tts.state === 'playing') pauseReading();
+        } else {
+            els.starwarsOverlay.classList.add('playing');
+            if (!config.enable_read_aloud || !('speechSynthesis' in window)) return;
+            if (tts.state === 'idle') startReading();
+            else if (tts.state === 'paused') resumeReading();
+        }
+    }
+
     function populateVoiceList() {
         const sel = els.settingsVoice;
         if (!sel || !('speechSynthesis' in window)) return;
@@ -2629,9 +2843,10 @@ ${body}</div>\n`;
         sel.value = userPrefs.tts_voice || '';
     }
 
-    function getReadableText() {
+    function getReadableText(startFrom) {
         const content = els.content || document.getElementById('viewer-content');
         if (!content) return '';
+        if (startFrom && !content.contains(startFrom)) startFrom = null;
         const excluded = new Set(content.querySelectorAll(
             'pre, code, .mermaid-container, .katex, .frontmatter, .heading-anchor, .footnote-ref, .footnote-backref'
         ));
@@ -2648,7 +2863,17 @@ ${body}</div>\n`;
         });
         const parts = [];
         let n;
-        while ((n = walker.nextNode())) parts.push(n.nodeValue);
+        let started = !startFrom;
+        while ((n = walker.nextNode())) {
+            if (!started) {
+                // Bit 4 = DOCUMENT_POSITION_FOLLOWING (n comes after startFrom).
+                // pos === 0 means same node. Either case: start collecting.
+                const pos = startFrom.compareDocumentPosition(n);
+                if (!(pos === 0 || (pos & 4))) continue;
+                started = true;
+            }
+            parts.push(n.nodeValue);
+        }
         return parts.join(' ').replace(/\s+/g, ' ').trim();
     }
 
@@ -2673,7 +2898,14 @@ ${body}</div>\n`;
     }
 
     function startReading() {
-        const text = getReadableText();
+        // If the user has clicked into or selected something in the document,
+        // start reading from that point instead of the beginning.
+        let startFrom = null;
+        const sel = window.getSelection?.();
+        if (sel && sel.rangeCount > 0 && sel.anchorNode) {
+            startFrom = sel.anchorNode;
+        }
+        const text = getReadableText(startFrom);
         if (!text) return;
         tts.queue = chunkText(text);
         tts.index = 0;
@@ -3019,6 +3251,10 @@ ${body}</div>\n`;
         els.settingsRateDisp = document.getElementById('settings-tts-rate-display');
         els.settingsReset = document.getElementById('settings-reset');
         els.settingsFootnote = document.getElementById('settings-footnote');
+        els.starwarsOverlay = document.getElementById('starwars-overlay');
+        els.starwarsCrawl = document.getElementById('starwars-crawl');
+        els.starwarsPlayBtn = document.getElementById('starwars-play-btn');
+        els.starwarsExitBtn = document.getElementById('starwars-exit-btn');
     }
 
     function debounce(fn, wait) {
@@ -3039,6 +3275,7 @@ ${body}</div>\n`;
         setupPrint();
         setupReadAloud();
         setupSettings();
+        setupStarwars();
 
         document.getElementById('toc-list').addEventListener('click', handleTocClick);
         document.getElementById('toc-drawer-list').addEventListener('click', handleTocClick);

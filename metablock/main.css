@@ -954,6 +954,148 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .viewer-action[data-state="playing"] { color: var(--accent); }
 .viewer-action svg { display: block; }
 
+/* =====================================================================
+   Easter egg: Star Wars opening crawl. Triggered by typing "starwars"
+   anywhere on the page. Iconic yellow text with CSS perspective +
+   slow translateY animation. Plays the read-aloud alongside the scroll.
+   ===================================================================== */
+.starwars-overlay {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    color: #FFE81F;
+    font-family: 'Trebuchet MS', 'Helvetica Neue', Arial, sans-serif;
+    z-index: 9999;
+    overflow: hidden;
+}
+.starwars-overlay[hidden] { display: none; }
+
+.starwars-stars {
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(1px 1px at 12% 18%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 33% 47%, #fff, transparent 60%),
+        radial-gradient(2px 2px at 51% 12%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 67% 81%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 82% 33%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 91% 62%, #fff, transparent 60%),
+        radial-gradient(2px 2px at 19% 88%, #fff, transparent 60%),
+        radial-gradient(1px 1px at 44% 95%, #fff, transparent 60%);
+    opacity: 0.9;
+    pointer-events: none;
+}
+
+.starwars-controls {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    z-index: 10;
+}
+.starwars-btn {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 232, 31, 0.08);
+    border: 1px solid #FFE81F;
+    border-radius: 50%;
+    color: #FFE81F;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.1s ease;
+}
+.starwars-btn:hover { background: rgba(255, 232, 31, 0.2); transform: translateY(-1px); }
+.starwars-btn:focus-visible { outline: 2px solid #FFE81F; outline-offset: 3px; }
+.starwars-overlay.playing #starwars-play-btn polygon { display: none; }
+.starwars-overlay.playing #starwars-play-btn::before {
+    content: "";
+    width: 14px; height: 14px;
+    background:
+        linear-gradient(#FFE81F, #FFE81F) left/4px 100% no-repeat,
+        linear-gradient(#FFE81F, #FFE81F) right/4px 100% no-repeat;
+}
+
+.starwars-intro {
+    position: absolute;
+    top: 38%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    max-width: 700px;
+    text-align: center;
+    color: #4af;
+    font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+    opacity: 0;
+}
+.starwars-overlay.playing .starwars-intro {
+    animation: swIntro 6s ease-in-out forwards;
+}
+@keyframes swIntro {
+    0%   { opacity: 0; }
+    15%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.starwars-stage {
+    position: absolute;
+    inset: 0;
+    perspective: 400px;
+    perspective-origin: 50% 100%;
+    overflow: hidden;
+}
+.starwars-crawl {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    width: min(70%, 700px);
+    transform: translateX(-50%) rotateX(25deg);
+    transform-origin: 50% 100%;
+    color: #FFE81F;
+    font-weight: 700;
+    text-align: justify;
+    font-size: clamp(1.4rem, 3vw, 2.2rem);
+    line-height: 1.35;
+    text-shadow: 0 0 8px rgba(255, 232, 31, 0.25);
+}
+.starwars-overlay.playing .starwars-crawl {
+    animation: swCrawl 120s linear forwards;
+    animation-delay: 5.5s;
+}
+@keyframes swCrawl {
+    0%   { top: 100%; }
+    100% { top: -400%; }
+}
+
+/* Style the markdown content cloned into the crawl. */
+.starwars-crawl h1, .starwars-crawl h2, .starwars-crawl h3,
+.starwars-crawl h4, .starwars-crawl h5, .starwars-crawl h6 {
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 1.4em 0 0.7em;
+    color: #FFE81F;
+}
+.starwars-crawl h1 { font-size: 1.4em; }
+.starwars-crawl h2 { font-size: 1.2em; }
+.starwars-crawl p { margin: 0 0 1em; }
+.starwars-crawl a { color: #FFE81F; text-decoration: underline; }
+.starwars-crawl strong { color: #fff; }
+.starwars-crawl em { font-style: italic; }
+/* Hide content types that don't suit a perspective crawl. */
+.starwars-crawl pre, .starwars-crawl code, .starwars-crawl table,
+.starwars-crawl figure, .starwars-crawl img, .starwars-crawl .mermaid-container,
+.starwars-crawl .katex-display, .starwars-crawl .callout,
+.starwars-crawl .frontmatter, .starwars-crawl .heading-anchor,
+.starwars-crawl .footnote-ref, .starwars-crawl .footnote-backref,
+.starwars-crawl .footnotes { display: none; }
+.starwars-crawl ul, .starwars-crawl ol { padding-left: 1.5em; }
+
+@media (prefers-reduced-motion: reduce) {
+    .starwars-overlay.playing .starwars-crawl,
+    .starwars-overlay.playing .starwars-intro { animation: none; opacity: 1; }
+}
+
 /* Reader settings popover */
 .settings-popover {
     position: absolute;

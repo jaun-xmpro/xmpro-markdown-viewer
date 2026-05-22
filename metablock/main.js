@@ -1104,6 +1104,57 @@ ${body}</div>\n`;
     }
 
     let voiceListenerPending = false;
+    // Easter egg: type "starwars" anywhere to enter the opening-crawl mode.
+    function setupStarwars() {
+        let buf = '';
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && els.starwarsOverlay && !els.starwarsOverlay.hidden) {
+                exitStarwars();
+                return;
+            }
+            if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            if (e.key.length !== 1) { buf = ''; return; }
+            buf = (buf + e.key.toLowerCase()).slice(-10);
+            if (buf.endsWith('starwars')) {
+                buf = '';
+                enterStarwars();
+            }
+        });
+        if (els.starwarsPlayBtn) els.starwarsPlayBtn.addEventListener('click', toggleStarwarsPlay);
+        if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
+    }
+
+    function enterStarwars() {
+        if (!els.starwarsOverlay || !els.starwarsCrawl || !els.content) return;
+        // Clone the rendered content into the crawl so it picks up paragraphs,
+        // headings, lists, etc. — CSS strips the bits that don't suit a crawl.
+        els.starwarsCrawl.innerHTML = els.content.innerHTML;
+        els.starwarsOverlay.hidden = false;
+        els.starwarsOverlay.classList.remove('playing');
+        Logger.info('★ Star Wars mode engaged — may the markdown be with you');
+    }
+
+    function exitStarwars() {
+        if (!els.starwarsOverlay) return;
+        els.starwarsOverlay.hidden = true;
+        els.starwarsOverlay.classList.remove('playing');
+        if (tts.state !== 'idle') stopReading();
+    }
+
+    function toggleStarwarsPlay() {
+        if (!els.starwarsOverlay) return;
+        const isPlaying = els.starwarsOverlay.classList.contains('playing');
+        if (isPlaying) {
+            els.starwarsOverlay.classList.remove('playing');
+            if (tts.state === 'playing') pauseReading();
+        } else {
+            els.starwarsOverlay.classList.add('playing');
+            if (!config.enable_read_aloud || !('speechSynthesis' in window)) return;
+            if (tts.state === 'idle') startReading();
+            else if (tts.state === 'paused') resumeReading();
+        }
+    }
+
     function populateVoiceList() {
         const sel = els.settingsVoice;
         if (!sel || !('speechSynthesis' in window)) return;
@@ -1130,9 +1181,10 @@ ${body}</div>\n`;
         sel.value = userPrefs.tts_voice || '';
     }
 
-    function getReadableText() {
+    function getReadableText(startFrom) {
         const content = els.content || document.getElementById('viewer-content');
         if (!content) return '';
+        if (startFrom && !content.contains(startFrom)) startFrom = null;
         const excluded = new Set(content.querySelectorAll(
             'pre, code, .mermaid-container, .katex, .frontmatter, .heading-anchor, .footnote-ref, .footnote-backref'
         ));
@@ -1149,7 +1201,17 @@ ${body}</div>\n`;
         });
         const parts = [];
         let n;
-        while ((n = walker.nextNode())) parts.push(n.nodeValue);
+        let started = !startFrom;
+        while ((n = walker.nextNode())) {
+            if (!started) {
+                // Bit 4 = DOCUMENT_POSITION_FOLLOWING (n comes after startFrom).
+                // pos === 0 means same node. Either case: start collecting.
+                const pos = startFrom.compareDocumentPosition(n);
+                if (!(pos === 0 || (pos & 4))) continue;
+                started = true;
+            }
+            parts.push(n.nodeValue);
+        }
         return parts.join(' ').replace(/\s+/g, ' ').trim();
     }
 
@@ -1174,7 +1236,14 @@ ${body}</div>\n`;
     }
 
     function startReading() {
-        const text = getReadableText();
+        // If the user has clicked into or selected something in the document,
+        // start reading from that point instead of the beginning.
+        let startFrom = null;
+        const sel = window.getSelection?.();
+        if (sel && sel.rangeCount > 0 && sel.anchorNode) {
+            startFrom = sel.anchorNode;
+        }
+        const text = getReadableText(startFrom);
         if (!text) return;
         tts.queue = chunkText(text);
         tts.index = 0;
@@ -1520,6 +1589,10 @@ ${body}</div>\n`;
         els.settingsRateDisp = document.getElementById('settings-tts-rate-display');
         els.settingsReset = document.getElementById('settings-reset');
         els.settingsFootnote = document.getElementById('settings-footnote');
+        els.starwarsOverlay = document.getElementById('starwars-overlay');
+        els.starwarsCrawl = document.getElementById('starwars-crawl');
+        els.starwarsPlayBtn = document.getElementById('starwars-play-btn');
+        els.starwarsExitBtn = document.getElementById('starwars-exit-btn');
     }
 
     function debounce(fn, wait) {
@@ -1540,6 +1613,7 @@ ${body}</div>\n`;
         setupPrint();
         setupReadAloud();
         setupSettings();
+        setupStarwars();
 
         document.getElementById('toc-list').addEventListener('click', handleTocClick);
         document.getElementById('toc-drawer-list').addEventListener('click', handleTocClick);
