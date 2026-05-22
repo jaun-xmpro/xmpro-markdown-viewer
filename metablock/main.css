@@ -180,7 +180,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     --code-border: #0a3445;
 }
 
-/* Auto theme follows system */
+/* Auto theme follows system. Token values below MUST mirror [data-theme="dark"] above. */
 @media (prefers-color-scheme: dark) {
     :root[data-theme="auto"] {
         --bg-primary: #0f1216;

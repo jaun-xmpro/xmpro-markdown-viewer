@@ -66,8 +66,6 @@
 (function () {
     'use strict';
 
-    /* ============ Defaults & State ============ */
-
     const DEFAULTS = {
         theme: 'auto',
         background: 'solid',
@@ -111,9 +109,10 @@
     let mermaidLoaded = false;
     let scrollSpyObserver = null;
     let searchState = { matches: [], current: -1, query: '' };
+    let lastFetchedUrl = null;
+    let lastFetchedContent = null;
+    let darkMQ = null;
     const slugCounts = new Map();
-
-    /* ============ Logger ============ */
 
     const Logger = {
         levels: { trace: 0, debug: 1, info: 2, warn: 3, error: 4, none: 5 },
@@ -125,8 +124,6 @@
         warn(...a)  { if (this.current <= 3) console.warn('[MD]', ...a); },
         error(...a) { if (this.current <= 4) console.error('[MD]', ...a); }
     };
-
-    /* ============ Utilities ============ */
 
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, c => ({
@@ -163,9 +160,8 @@
 
     function normalizeConfig(input) {
         const cfg = Object.assign({}, input);
-        // metablock_id is set once at init; subsequent partials must not
-        // overwrite it, or the iframe will treat its own postMessages as
-        // self-echo and ignore them.
+        // metablock_id is set once at init; partial config updates must not
+        // overwrite it, or the iframe would treat its own messages as self-echo.
         delete cfg.metablock_id;
         const bools = [
             'code_line_numbers', 'code_copy_button', 'code_wrap',
@@ -184,10 +180,21 @@
         return cfg;
     }
 
-    /* ============ Config Application ============ */
+    function headingMeta(el) {
+        return {
+            id: el.id,
+            text: (el.textContent || '').replace(/^#/, '').trim(),
+            level: parseInt(el.tagName.slice(1), 10)
+        };
+    }
 
     function applyConfig(partial) {
+        const prevUrl = config.markdown_url;
         config = Object.assign({}, config, partial);
+        if (config.markdown_url !== prevUrl) {
+            lastFetchedUrl = null;
+            lastFetchedContent = null;
+        }
         Logger.init(config.log_level || (config.debug ? 'debug' : 'warn'));
 
         const root = document.getElementById('viewer-root');
@@ -217,8 +224,6 @@
         const pb = document.getElementById('progress-bar');
         if (pb) pb.hidden = !config.enable_progress_bar;
     }
-
-    /* ============ XMPro Hooks ============ */
 
     function onValueMappingLoaded(data) {
         Logger.debug('onValueMappingLoaded', data);
@@ -265,26 +270,28 @@
         return parts.length ? parts.join('\n\n---\n\n') : null;
     }
 
-    /* ============ Content Resolution ============ */
-
     async function resolveContent() {
         if (dataSourceContent) return { source: 'data-source', content: dataSourceContent };
         if (config.content) return { source: 'value-mapping', content: config.content };
         if (config.markdown_url) {
             const url = validateUrl(config.markdown_url);
             if (!url) return { source: 'error', error: 'Invalid markdown_url (only http/https allowed)' };
+            if (url === lastFetchedUrl && lastFetchedContent !== null) {
+                return { source: 'url', content: lastFetchedContent };
+            }
             try {
                 const res = await fetch(url, { credentials: 'omit' });
                 if (!res.ok) return { source: 'error', error: `HTTP ${res.status} fetching ${url}` };
-                return { source: 'url', content: await res.text() };
+                const text = await res.text();
+                lastFetchedUrl = url;
+                lastFetchedContent = text;
+                return { source: 'url', content: text };
             } catch (e) {
                 return { source: 'error', error: e.message || 'Fetch failed' };
             }
         }
         return { source: 'empty', content: '' };
     }
-
-    /* ============ Marked Configuration ============ */
 
     function configureMarked() {
         if (markedConfigured) return;
@@ -338,21 +345,30 @@
             },
             renderer(token) {
                 const body = this.parser.parse(token.tokens);
-                const labels = { note: 'Note', tip: 'Tip', important: 'Important', warning: 'Warning', caution: 'Caution', danger: 'Danger' };
-                const icons = {
-                    note: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
-                    tip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c1 .8 1.5 2 1.5 3.3h5c0-1.3.5-2.5 1.5-3.3A7 7 0 0 0 12 2z"/></svg>',
-                    important: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
-                    warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
-                    caution: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
-                    danger: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>'
-                };
+                const label = CALLOUT_LABELS[token.calloutType] || token.calloutType;
+                const icon = CALLOUT_ICONS[token.calloutType] || '';
                 return `<div class="callout" data-type="${token.calloutType}">
-<div class="callout-title">${icons[token.calloutType] || ''}<span>${labels[token.calloutType] || token.calloutType}</span></div>
+<div class="callout-title">${icon}<span>${label}</span></div>
 ${body}</div>\n`;
             }
         };
     }
+
+    const SVG_ICON_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="callout-icon"';
+    const svgIcon = (inner) => `<svg ${SVG_ICON_ATTRS}>${inner}</svg>`;
+
+    const CALLOUT_LABELS = {
+        note: 'Note', tip: 'Tip', important: 'Important',
+        warning: 'Warning', caution: 'Caution', danger: 'Danger'
+    };
+    const CALLOUT_ICONS = {
+        note:      svgIcon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>'),
+        tip:       svgIcon('<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c1 .8 1.5 2 1.5 3.3h5c0-1.3.5-2.5 1.5-3.3A7 7 0 0 0 12 2z"/>'),
+        important: svgIcon('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'),
+        warning:   svgIcon('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>'),
+        caution:   svgIcon('<circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>'),
+        danger:    svgIcon('<polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>')
+    };
 
     function mathInlineExtension() {
         return {
@@ -399,8 +415,6 @@ ${body}</div>\n`;
         };
     }
 
-    /* ============ Frontmatter ============ */
-
     function parseFrontmatter(text) {
         const m = /^---\s*\n([\s\S]*?)\n---\s*\n?/.exec(text);
         if (!m) return { frontmatter: null, body: text };
@@ -423,8 +437,6 @@ ${body}</div>\n`;
             `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(String(v))}</td></tr>`).join('');
         return `<div class="frontmatter"><table>${rows}</table></div>`;
     }
-
-    /* ============ Render Pipeline ============ */
 
     function scheduleRender() {
         if (pendingRender) clearTimeout(pendingRender);
@@ -476,9 +488,7 @@ ${body}</div>\n`;
         if (config.enable_toc) buildTOC();
         else hideTOC();
 
-        const headings = Array.from(contentEl.querySelectorAll('h1,h2,h3,h4,h5,h6')).map(h => ({
-            id: h.id, text: (h.textContent || '').replace(/^#/, '').trim(), level: parseInt(h.tagName.slice(1), 10)
-        }));
+        const headings = Array.from(contentEl.querySelectorAll('h1,h2,h3,h4,h5,h6')).map(headingMeta);
         const wordCount = (contentEl.textContent.match(/\S+/g) || []).length;
         sendMessage('markdown:loaded', { source, wordCount, headings, hasMath, hasDiagrams });
 
@@ -513,11 +523,7 @@ ${body}</div>\n`;
             h.insertBefore(a, h.firstChild);
             a.addEventListener('click', (e) => {
                 e.stopPropagation();
-                sendMessage('markdown:heading-clicked', {
-                    id: h.id,
-                    text: h.textContent.replace(/^#/, '').trim(),
-                    level: parseInt(h.tagName.slice(1), 10)
-                });
+                sendMessage('markdown:heading-clicked', headingMeta(h));
             });
         });
     }
@@ -598,7 +604,8 @@ ${body}</div>\n`;
         });
     }
 
-    /* ============ Math (lazy KaTeX) ============ */
+    function mathInlineFallback(src) { return `<code>$${escapeHtml(src)}$</code>`; }
+    function mathBlockFallback(src) { return `<pre><code>${escapeHtml(src)}</code></pre>`; }
 
     async function loadKaTeX() {
         if (katexLoaded) return;
@@ -613,32 +620,27 @@ ${body}</div>\n`;
     async function renderMath(root) {
         try {
             await loadKaTeX();
-            root.querySelectorAll('.math-inline-pending').forEach(el => {
-                const src = el.getAttribute('data-source') || '';
-                try {
-                    el.outerHTML = katex.renderToString(src, { throwOnError: false, displayMode: false });
-                } catch {
-                    el.outerHTML = `<code>$${escapeHtml(src)}$</code>`;
-                }
-            });
-            root.querySelectorAll('.math-block-pending').forEach(el => {
-                const src = el.getAttribute('data-source') || '';
-                try {
-                    el.outerHTML = `<div class="katex-display-wrap">${katex.renderToString(src, { throwOnError: false, displayMode: true })}</div>`;
-                } catch {
-                    el.outerHTML = `<pre><code>${escapeHtml(src)}</code></pre>`;
-                }
-            });
         } catch (err) {
             Logger.warn('KaTeX load failed; rendering math as code', err);
-            root.querySelectorAll('.math-inline-pending, .math-block-pending').forEach(el => {
-                const src = el.getAttribute('data-source') || '';
-                el.outerHTML = `<code>${escapeHtml(src)}</code>`;
+            root.querySelectorAll('.math-inline-pending').forEach(el => {
+                el.outerHTML = mathInlineFallback(el.getAttribute('data-source') || '');
             });
+            root.querySelectorAll('.math-block-pending').forEach(el => {
+                el.outerHTML = mathBlockFallback(el.getAttribute('data-source') || '');
+            });
+            return;
         }
+        root.querySelectorAll('.math-inline-pending').forEach(el => {
+            const src = el.getAttribute('data-source') || '';
+            try { el.outerHTML = katex.renderToString(src, { throwOnError: false, displayMode: false }); }
+            catch { el.outerHTML = mathInlineFallback(src); }
+        });
+        root.querySelectorAll('.math-block-pending').forEach(el => {
+            const src = el.getAttribute('data-source') || '';
+            try { el.outerHTML = `<div class="katex-display-wrap">${katex.renderToString(src, { throwOnError: false, displayMode: true })}</div>`; }
+            catch { el.outerHTML = mathBlockFallback(src); }
+        });
     }
-
-    /* ============ Diagrams (lazy Mermaid) ============ */
 
     async function loadMermaid() {
         if (mermaidLoaded) return;
@@ -686,14 +688,11 @@ ${body}</div>\n`;
     }
 
     function isCurrentlyDark() {
-        const root = document.getElementById('viewer-root');
-        const theme = root?.getAttribute('data-theme') || 'auto';
+        const theme = config.theme || 'auto';
         if (theme === 'dark' || theme === 'xmpro-dark') return true;
         if (theme === 'light' || theme === 'xmpro-light') return false;
-        return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        return !!(darkMQ && darkMQ.matches);
     }
-
-    /* ============ Lazy script/stylesheet helpers ============ */
 
     function loadScript(url) {
         return new Promise((resolve, reject) => {
@@ -725,8 +724,6 @@ ${body}</div>\n`;
         });
     }
 
-    /* ============ TOC ============ */
-
     function buildTOC() {
         const content = document.getElementById('viewer-content');
         const headings = Array.from(content.querySelectorAll('h2[id], h3[id], h4[id]'));
@@ -754,25 +751,21 @@ ${body}</div>\n`;
             fab.hidden = true;
         }
 
-        document.querySelectorAll('.toc a, .toc-drawer a').forEach(a => {
-            a.addEventListener('click', (e) => {
-                e.preventDefault();
-                const id = a.getAttribute('data-target');
-                const t = document.getElementById(id);
-                if (t) {
-                    t.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    history.replaceState(null, '', '#' + id);
-                    sendMessage('markdown:heading-clicked', {
-                        id,
-                        text: t.textContent.replace(/^#/, '').trim(),
-                        level: parseInt(t.tagName.slice(1), 10)
-                    });
-                }
-                document.getElementById('toc-drawer').classList.remove('open');
-            });
-        });
-
         setupScrollSpy(headings);
+    }
+
+    function handleTocClick(e) {
+        const a = e.target.closest('a[data-target]');
+        if (!a) return;
+        e.preventDefault();
+        const id = a.getAttribute('data-target');
+        const t = document.getElementById(id);
+        if (t) {
+            t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            history.replaceState(null, '', '#' + id);
+            sendMessage('markdown:heading-clicked', headingMeta(t));
+        }
+        document.getElementById('toc-drawer').classList.remove('open');
     }
 
     function hideTOC() {
@@ -796,21 +789,20 @@ ${body}</div>\n`;
         headings.forEach(h => scrollSpyObserver.observe(h));
     }
 
-    /* ============ Progress / Lightbox / TOC drawer / Search ============ */
-
     function setupProgressBar() {
         const fill = document.getElementById('progress-bar-fill');
         const scroll = document.getElementById('viewer-scroll');
-        let throttle = null;
+        let throttleTimer = null;
+        let latestPct = 0;
         scroll.addEventListener('scroll', () => {
             const max = scroll.scrollHeight - scroll.clientHeight;
-            const pct = max > 0 ? (scroll.scrollTop / max) * 100 : 0;
-            if (fill) fill.style.width = pct + '%';
-            if (throttle) return;
-            throttle = setTimeout(() => {
-                throttle = null;
+            latestPct = max > 0 ? (scroll.scrollTop / max) * 100 : 0;
+            if (fill) fill.style.width = latestPct + '%';
+            if (throttleTimer) return;
+            throttleTimer = setTimeout(() => {
+                throttleTimer = null;
                 if (config.enable_progress_bar) {
-                    sendMessage('markdown:scroll-progress', { percent: Math.round(pct) });
+                    sendMessage('markdown:scroll-progress', { percent: Math.round(latestPct) });
                 }
             }, 200);
         }, { passive: true });
@@ -941,17 +933,17 @@ ${body}</div>\n`;
 
         function clearSearch() {
             const content = document.getElementById('viewer-content');
+            const parents = new Set();
             content.querySelectorAll('.search-highlight').forEach(el => {
                 const parent = el.parentNode;
                 parent.replaceChild(document.createTextNode(el.textContent), el);
-                parent.normalize();
+                parents.add(parent);
             });
+            parents.forEach(p => p.normalize());
             searchState = { matches: [], current: -1, query: '' };
             info.textContent = '';
         }
     }
-
-    /* ============ postMessage Bus ============ */
 
     function sendMessage(type, data) {
         try {
@@ -1016,8 +1008,6 @@ ${body}</div>\n`;
         });
     }
 
-    /* ============ Empty / Error States ============ */
-
     function renderEmpty() {
         const c = document.getElementById('viewer-content');
         c.innerHTML = `<div class="viewer-state">
@@ -1036,8 +1026,6 @@ ${body}</div>\n`;
 </div>`;
     }
 
-    /* ============ Initialization ============ */
-
     function initOnce() {
         setupMessageListener();
         setupProgressBar();
@@ -1045,22 +1033,28 @@ ${body}</div>\n`;
         setupTocDrawer();
         setupSearch();
 
+        document.getElementById('toc-list').addEventListener('click', handleTocClick);
+        document.getElementById('toc-drawer-list').addEventListener('click', handleTocClick);
+
         if (window.matchMedia) {
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-                if (mermaidLoaded && window.mermaid) {
-                    window.mermaid.initialize({
-                        startOnLoad: false,
-                        theme: isCurrentlyDark() ? 'dark' : 'default',
-                        securityLevel: 'strict'
-                    });
-                    lastRenderedHash = null;
-                    scheduleRender();
-                }
+            darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
+            darkMQ.addEventListener('change', () => {
+                // Only re-render when the auto theme is in use; explicit themes
+                // are unaffected by the OS preference.
+                if (config.theme && config.theme !== 'auto') return;
+                if (!mermaidLoaded || !window.mermaid) return;
+                window.mermaid.initialize({
+                    startOnLoad: false,
+                    theme: isCurrentlyDark() ? 'dark' : 'default',
+                    securityLevel: 'strict'
+                });
+                lastRenderedHash = null;
+                scheduleRender();
             });
         }
 
-        // Announce ready — re-announce a few times so we win timing races
-        // against a parent listener that attaches slightly later.
+        // Re-announce a few times so we win timing races against a parent
+        // listener that attaches slightly later.
         announceReady();
     }
 
@@ -1071,12 +1065,10 @@ ${body}</div>\n`;
         setTimeout(() => sendMessage('markdown:ready', payload), 500);
     }
 
-    /* Expose XMPro hooks */
     window.onValueMappingLoaded = onValueMappingLoaded;
     window.onDataLoaded = onDataLoaded;
     window.onDataChanged = onDataChanged;
 
-    /* Standalone test mode — only when run outside XMPro with query params */
     function maybeSelfInit() {
         if (hasInitialized) return;
         const params = new URLSearchParams(window.location.search);

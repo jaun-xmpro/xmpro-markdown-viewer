@@ -34,7 +34,9 @@ const MIME = {
 
 function safeJoin(base, target) {
     const resolved = path.resolve(base, '.' + target);
-    if (!resolved.startsWith(ROOT)) return null;
+    // Require a path-separator boundary so e.g. ROOT="/x/foo" doesn't permit "/x/foo_other".
+    const rootWithSep = ROOT.endsWith(path.sep) ? ROOT : ROOT + path.sep;
+    if (resolved !== ROOT && !resolved.startsWith(rootWithSep)) return null;
     return resolved;
 }
 

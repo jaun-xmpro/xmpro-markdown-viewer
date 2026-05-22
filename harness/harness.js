@@ -24,7 +24,6 @@
         { id: '08-kitchen-sink',  title: 'Kitchen sink',      sub: 'Every supported feature' }
     ];
 
-    // ---- State ----
     const state = {
         currentExample: null,
         currentExampleId: null,
@@ -64,8 +63,6 @@
     const logCount = document.getElementById('log-count');
     let logEntryCount = 0;
 
-    // ---- Example list rendering ----
-
     function renderExampleList() {
         const ul = document.getElementById('example-list');
         ul.innerHTML = examples.map(ex => `
@@ -94,13 +91,7 @@
             state.currentExample = await res.text();
             stopStreaming();
             updateStreamButton();
-
-            // For example 06, start with intro only; user clicks Start streaming
-            if (id === '06-live-updates') {
-                send('markdown:set-content', { content: state.currentExample });
-            } else {
-                send('markdown:set-content', { content: state.currentExample });
-            }
+            send('markdown:set-content', { content: state.currentExample });
         } catch (err) {
             console.error('Failed to load example', err);
             send('markdown:set-content', {
@@ -109,8 +100,6 @@
         }
     }
 
-    // ---- Control wiring ----
-
     function setupControls() {
         // Theme
         document.getElementById('ctrl-theme').addEventListener('change', e => {
@@ -118,7 +107,6 @@
             send('markdown:set-theme', { theme: e.target.value });
         });
 
-        // Background
         document.getElementById('ctrl-bg').addEventListener('change', e => {
             const bg = e.target.value;
             state.config.background = bg;
@@ -127,6 +115,8 @@
                 payload.background_image_url = 'https://placehold.co/1600x900/0a3445/e6f4fa/png?text=XMPro';
                 payload.background_overlay = 0.55;
                 state.config.background_image_url = payload.background_image_url;
+            } else {
+                state.config.background_image_url = '';
             }
             send('markdown:set-background', payload);
         });
@@ -214,8 +204,6 @@
         btn.textContent = state.streaming.active ? '■ Stop streaming' : '▶ Start streaming';
     }
 
-    // ---- Streaming demo (simulates onDataChanged) ----
-
     function startStreaming() {
         if (!state.currentExample) return;
 
@@ -262,8 +250,6 @@
         updateStreamButton();
     }
 
-    // ---- postMessage transport ----
-
     function send(type, data) {
         const msg = {
             source: 'xmpro-harness',
@@ -297,47 +283,47 @@
 
         if (msg.type === 'markdown:ready') {
             if (state.iframeReady) return; // ignore duplicate ready announcements
-            state.iframeReady = true;
-            // First send: apply full config, then load default example.
-            // Strip metablock_id so we don't overwrite the iframe's own ID.
-            const { metablock_id, ...cfgForIframe } = state.config;
-            iframe.contentWindow.postMessage({
-                source: 'xmpro-harness',
-                type: 'markdown:update-config',
-                data: cfgForIframe,
-                metablockId: state.config.metablock_id
-            }, '*');
-            logEntry('out', 'markdown:update-config', cfgForIframe);
-            flushQueue();
-            // Load the first example by default
-            if (!state.currentExampleId) loadExample('01-welcome');
+            completeHandshake();
         }
 
         logEntry('in', msg.type, msg.data);
     });
 
+    // Strip metablock_id so we don't overwrite the iframe's own ID.
+    function completeHandshake() {
+        state.iframeReady = true;
+        const { metablock_id, ...cfgForIframe } = state.config;
+        rawSend('markdown:update-config', cfgForIframe);
+        flushQueue();
+        if (!state.currentExampleId) loadExample('01-welcome');
+    }
+
+    function rawSend(type, data) {
+        iframe.contentWindow.postMessage({
+            source: 'xmpro-harness',
+            type,
+            data: data || {},
+            timestamp: new Date().toISOString(),
+            metablockId: state.config.metablock_id
+        }, '*');
+        logEntry('out', type, data);
+    }
+
     // When the iframe finishes loading, send a hello so it announces ready
     // even if our listener attached after the iframe's initial broadcast.
     iframe.addEventListener('load', () => {
         if (state.iframeReady) return;
-        try {
-            iframe.contentWindow.postMessage({
-                source: 'xmpro-harness',
-                type: 'harness:hello',
-                data: {},
-                metablockId: state.config.metablock_id
-            }, '*');
-        } catch { /* iframe may not yet expose contentWindow safely */ }
+        try { rawSend('harness:hello', {}); }
+        catch { /* iframe may not yet expose contentWindow safely */ }
     });
-
-    // ---- Logging ----
 
     function logEntry(dir, type, data) {
         const empty = logBody.querySelector('.h-log-empty');
         if (empty) empty.remove();
 
-        const time = new Date().toLocaleTimeString('en-US', { hour12: false }) + '.' +
-            String(new Date().getMilliseconds()).padStart(3, '0');
+        const now = new Date();
+        const time = now.toLocaleTimeString('en-US', { hour12: false }) + '.' +
+            String(now.getMilliseconds()).padStart(3, '0');
         const json = data ? JSON.stringify(data) : '';
         const preview = json.length > 80 ? json.slice(0, 77) + '...' : json;
 
@@ -380,28 +366,16 @@
         }[c]));
     }
 
-    // ---- Boot ----
-
     document.addEventListener('DOMContentLoaded', () => {
         renderExampleList();
         setupControls();
 
-        // If the iframe took too long to send `markdown:ready` (e.g., metablock has
-        // no auto-init logic), fall back to forcing init after 1.5s.
+        // Fallback: if the iframe never announces ready (e.g., metablock has no
+        // auto-init path), force the handshake after 1.5s so the UI still works.
         setTimeout(() => {
-            if (!state.iframeReady) {
-                console.warn('[harness] iframe did not announce ready; pushing config anyway');
-                state.iframeReady = true;
-                const { metablock_id, ...cfgForIframe } = state.config;
-                iframe.contentWindow.postMessage({
-                    source: 'xmpro-harness',
-                    type: 'markdown:update-config',
-                    data: cfgForIframe,
-                    metablockId: state.config.metablock_id
-                }, '*');
-                logEntry('out', 'markdown:update-config', cfgForIframe);
-                if (!state.currentExampleId) loadExample('01-welcome');
-            }
+            if (state.iframeReady) return;
+            console.warn('[harness] iframe did not announce ready; pushing config anyway');
+            completeHandshake();
         }, 1500);
     });
 
