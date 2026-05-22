@@ -53,6 +53,8 @@
             enable_print: true,
             enable_read_aloud: true,
             enable_reading_stats: true,
+            enable_settings: true,
+            persist_preferences: true,
             code_copy_button: true,
             code_line_numbers: false,
             code_wrap: false,
@@ -67,6 +69,42 @@
     const logBody = document.getElementById('log-body');
     const logCount = document.getElementById('log-count');
     let logEntryCount = 0;
+
+    const HARNESS_STORAGE_KEY = 'xmpro-md-harness-state';
+    function saveHarnessState() {
+        try {
+            const snapshot = { config: state.config, currentExampleId: state.currentExampleId };
+            localStorage.setItem(HARNESS_STORAGE_KEY, JSON.stringify(snapshot));
+        } catch { /* quota or disabled storage — ignore */ }
+    }
+    function loadHarnessState() {
+        try {
+            const raw = localStorage.getItem(HARNESS_STORAGE_KEY);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch { return null; }
+    }
+    function applyHarnessStateToControls() {
+        const c = state.config;
+        const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+        set('ctrl-theme', c.theme);
+        set('ctrl-bg', c.background);
+        set('ctrl-font', c.font_family);
+        set('ctrl-fsize', c.font_size);
+        set('ctrl-width', c.content_width);
+        set('ctrl-heading', c.heading_style);
+        set('ctrl-accent', c.accent_color);
+        set('ctrl-toc-pos', c.toc_position);
+        set('ctrl-anim', c.animation_level);
+        set('ctrl-font-url', c.font_family_url);
+        set('ctrl-font-name', c.font_family_name);
+        const fsizeDisp = document.getElementById('fsize-display');
+        if (fsizeDisp) fsizeDisp.textContent = (parseFloat(c.font_size) || 1).toFixed(2);
+        document.querySelectorAll('#toggle-list input[data-cfg]').forEach(input => {
+            const key = input.dataset.cfg;
+            if (key in c) input.checked = !!c[key];
+        });
+    }
 
     function renderExampleList() {
         const ul = document.getElementById('example-list');
@@ -87,6 +125,7 @@
         const ex = examples.find(e => e.id === id);
         if (!ex) return;
         state.currentExampleId = id;
+        saveHarnessState();
         document.querySelectorAll('#example-list button').forEach(b =>
             b.classList.toggle('active', b.dataset.id === id));
 
@@ -106,9 +145,9 @@
     }
 
     function setupControls() {
-        // Theme
         document.getElementById('ctrl-theme').addEventListener('change', e => {
             state.config.theme = e.target.value;
+            saveHarnessState();
             send('markdown:set-theme', { theme: e.target.value });
         });
 
@@ -123,60 +162,62 @@
             } else {
                 state.config.background_image_url = '';
             }
+            saveHarnessState();
             send('markdown:set-background', payload);
         });
 
         // Font family
         document.getElementById('ctrl-font').addEventListener('change', e => {
             state.config.font_family = e.target.value;
+            saveHarnessState();
             send('markdown:update-config', { font_family: e.target.value });
         });
 
-        // Font size
         const fsize = document.getElementById('ctrl-fsize');
         const fsizeDisplay = document.getElementById('fsize-display');
         fsize.addEventListener('input', e => {
             const v = parseFloat(e.target.value);
             state.config.font_size = v;
             fsizeDisplay.textContent = v.toFixed(2);
+            saveHarnessState();
             send('markdown:update-config', { font_size: v });
         });
 
-        // Width
         document.getElementById('ctrl-width').addEventListener('change', e => {
             state.config.content_width = e.target.value;
+            saveHarnessState();
             send('markdown:update-config', { content_width: e.target.value });
         });
 
-        // Heading
         document.getElementById('ctrl-heading').addEventListener('change', e => {
             state.config.heading_style = e.target.value;
+            saveHarnessState();
             send('markdown:update-config', { heading_style: e.target.value });
         });
 
-        // Accent color
         document.getElementById('ctrl-accent').addEventListener('input', e => {
             state.config.accent_color = e.target.value;
+            saveHarnessState();
             send('markdown:update-config', { accent_color: e.target.value });
         });
 
-        // TOC position
         document.getElementById('ctrl-toc-pos').addEventListener('change', e => {
             state.config.toc_position = e.target.value;
+            saveHarnessState();
             send('markdown:update-config', { toc_position: e.target.value, enable_toc: state.config.enable_toc });
         });
 
-        // Animation
         document.getElementById('ctrl-anim').addEventListener('change', e => {
             state.config.animation_level = e.target.value;
+            saveHarnessState();
             send('markdown:update-config', { animation_level: e.target.value });
         });
 
-        // Feature toggles
         document.querySelectorAll('#toggle-list input[data-cfg]').forEach(input => {
             input.addEventListener('change', () => {
                 const key = input.dataset.cfg;
                 state.config[key] = input.checked;
+                saveHarnessState();
                 send('markdown:update-config', { [key]: input.checked });
             });
         });
@@ -209,6 +250,7 @@
             if (!url || !name) return;
             state.config.font_family_url = url;
             state.config.font_family_name = name;
+            saveHarnessState();
             send('markdown:update-config', { font_family_url: url, font_family_name: name });
         });
         document.getElementById('btn-font-clear').addEventListener('click', () => {
@@ -216,6 +258,7 @@
             fontNameInput.value = '';
             state.config.font_family_url = '';
             state.config.font_family_name = '';
+            saveHarnessState();
             send('markdown:update-config', { font_family_url: '', font_family_name: '' });
         });
     }
@@ -318,7 +361,7 @@
         const { metablock_id, ...cfgForIframe } = state.config;
         rawSend('markdown:update-config', cfgForIframe);
         flushQueue();
-        if (!state.currentExampleId) loadExample('01-welcome');
+        loadExample(state.currentExampleId || '01-welcome');
     }
 
     function rawSend(type, data) {
@@ -390,8 +433,14 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        const saved = loadHarnessState();
+        if (saved && saved.config) {
+            state.config = Object.assign({}, state.config, saved.config);
+            state.currentExampleId = saved.currentExampleId || null;
+        }
         renderExampleList();
         setupControls();
+        applyHarnessStateToControls();
 
         // Fallback: if the iframe never announces ready (e.g., metablock has no
         // auto-init path), force the handshake after 1.5s so the UI still works.

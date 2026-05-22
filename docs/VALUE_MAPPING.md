@@ -80,7 +80,10 @@ When both are set they override `font_family`. The URL must use `http://` or `ht
 | `enable_print` | bool | `true` | Print button in the floating actions toolbar |
 | `enable_read_aloud` | bool | `true` | Text-to-speech via Web Speech API; hidden if browser unsupported |
 | `enable_reading_stats` | bool | `true` | Word count + estimated read time in the floating actions pill |
+| `enable_settings` | bool | `true` | Gear button + popover for per-user reader settings |
+| `persist_preferences` | bool | `false` | When on, user choices in the settings popover are saved to `localStorage` and restored on next load |
 | `tts_rate` | 0.5–2 | `1.0` | Read-aloud speech rate multiplier |
+| `tts_voice` | string | `""` | Preferred SpeechSynthesis voice name (must match a browser-installed voice) |
 
 ## Behaviour
 
@@ -89,6 +92,14 @@ When both are set they override `font_family`. The URL must use `http://` or `ht
 | `animation_level` | enum | `"subtle"` | `none`, `subtle`, `lively`. `prefers-reduced-motion` always wins. |
 | `links_target` | enum | `"_blank"` | `_blank`, `_self`, `_top` for external links |
 | `auto_scroll_to_anchor` | bool | `true` | On load, scroll to URL hash if present |
+
+### User preferences (when `persist_preferences: true`)
+
+The settings popover lets users override these keys per-browser-origin; choices are stored under `localStorage["xmpro-md-viewer-prefs"]` and applied on top of the document config:
+
+`theme`, `font_size`, `content_width`, `line_height`, `code_wrap`, `tts_voice`, `tts_rate`.
+
+These are *reader preferences*, not author intent. Backgrounds, accent color, heading style, animation level, and feature toggles never persist — those reflect the document's identity.
 
 ## Debug & identity
 

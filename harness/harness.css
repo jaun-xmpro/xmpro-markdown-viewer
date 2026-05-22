@@ -261,6 +261,24 @@ body {
 .h-footer { color: #6b7280; font-size: 11px; line-height: 1.4; }
 .h-footer code { background: #1f242c; padding: 1px 4px; border-radius: 3px; font-size: 10px; }
 
+.h-downloads { list-style: none; padding: 0; margin: 0; }
+.h-downloads li { margin-bottom: 4px; }
+.h-downloads a {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 6px 10px;
+    border-radius: 5px;
+    background: #1a1e25;
+    border: 1px solid #2d3340;
+    color: #e5e7eb;
+    text-decoration: none;
+    transition: background 0.15s, border-color 0.15s;
+}
+.h-downloads a:hover { background: #262d38; border-color: #009fde; }
+.h-dl-title { font-size: 12px; font-weight: 600; }
+.h-dl-sub { font-size: 10px; color: #9ca3af; }
+
 /* ---------- Viewer ---------- */
 .h-viewer {
     display: flex;

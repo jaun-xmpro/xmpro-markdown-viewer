@@ -97,6 +97,53 @@
                 <rect x="6" y="14" width="12" height="8"/>
             </svg>
         </button>
+        <button class="viewer-action" id="btn-settings" aria-label="Reader settings" title="Reader settings" hidden>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+        </button>
+    </div>
+
+    <div class="settings-popover" id="settings-popover" hidden>
+        <div class="settings-title">Reader settings</div>
+        <div class="settings-section">
+            <label for="settings-theme">Theme</label>
+            <select id="settings-theme">
+                <option value="">Use document default</option>
+                <option value="auto">Auto (follows system)</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="xmpro-light">XMPro light</option>
+                <option value="xmpro-dark">XMPro dark</option>
+            </select>
+        </div>
+        <div class="settings-section">
+            <label for="settings-font-size">Font size <span id="settings-font-size-display"></span></label>
+            <input type="range" id="settings-font-size" min="0.8" max="1.5" step="0.05" value="1">
+        </div>
+        <div class="settings-section">
+            <label for="settings-width">Content width</label>
+            <select id="settings-width">
+                <option value="">Use document default</option>
+                <option value="narrow">Narrow</option>
+                <option value="medium">Medium</option>
+                <option value="wide">Wide</option>
+                <option value="full">Full</option>
+            </select>
+        </div>
+        <div class="settings-section" id="settings-tts-block">
+            <label for="settings-tts-voice">Reading voice</label>
+            <select id="settings-tts-voice"></select>
+        </div>
+        <div class="settings-section" id="settings-rate-block">
+            <label for="settings-tts-rate">Reading speed <span id="settings-tts-rate-display"></span></label>
+            <input type="range" id="settings-tts-rate" min="0.5" max="2" step="0.05" value="1">
+        </div>
+        <div class="settings-section">
+            <button class="settings-reset" id="settings-reset">Reset to document defaults</button>
+        </div>
+        <div class="settings-footnote" id="settings-footnote"></div>
     </div>
 
     <!-- Scroll container -->

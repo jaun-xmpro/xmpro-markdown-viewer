@@ -29,7 +29,8 @@ const MIME = {
     '.png':  'image/png',
     '.jpg':  'image/jpeg',
     '.ico':  'image/x-icon',
-    '.txt':  'text/plain; charset=utf-8'
+    '.txt':  'text/plain; charset=utf-8',
+    '.zip':  'application/zip'
 };
 
 function safeJoin(base, target) {
@@ -70,8 +71,9 @@ const server = http.createServer((req, res) => {
         return serveFile(res, filepath);
     }
 
-    if (pathname.startsWith('/metablock/') || pathname.startsWith('/../metablock/')) {
-        // Normalize path that may include ../
+    if (pathname.startsWith('/metablock/') || pathname.startsWith('/../metablock/') ||
+        pathname.startsWith('/dist/') || pathname.startsWith('/../dist/') ||
+        pathname === '/README.md' || pathname === '/../README.md') {
         const cleaned = pathname.replace(/^\/\.\.\//, '/');
         const filepath = safeJoin(ROOT, cleaned);
         if (!filepath) { res.statusCode = 403; res.end('403'); return; }
