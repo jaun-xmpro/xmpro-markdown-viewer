@@ -955,8 +955,54 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .viewer-action svg { display: block; }
 
 /* =====================================================================
-   Easter egg: Star Wars opening crawl. Unlocked by 8s hold on the play
-   button (audio-only feedback during the hold).
+   Easter egg unlock: drag the play button → a lightsaber blade extends
+   from the button toward the cursor, following its angle. Release when
+   the blade is at full extension (~97%) to unlock the Star Wars opening
+   crawl below. Short drags (< SABER_THRESHOLD) still register as clicks,
+   so normal TTS play/pause is unaffected.
+   ===================================================================== */
+.saber-blade {
+    position: fixed;
+    height: 10px;
+    width: 0;
+    background: linear-gradient(90deg, #ffffff 0%, #6fc1ff 14%, #5cb6ff 100%);
+    border-radius: 0 5px 5px 0;
+    transform-origin: 0 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    z-index: 9998;
+    will-change: width, transform;
+    box-shadow:
+        0 0 8px rgba(92, 182, 255, 0.9),
+        0 0 18px rgba(92, 182, 255, 0.7),
+        0 0 40px rgba(92, 182, 255, 0.4);
+}
+.saber-blade.ready {
+    box-shadow:
+        0 0 14px #ffffff,
+        0 0 30px #6fc1ff,
+        0 0 60px #5cb6ff,
+        0 0 100px rgba(92, 182, 255, 0.55);
+}
+.saber-blade.ignite {
+    transition: opacity 0.32s ease-out, box-shadow 0.32s ease-out;
+    opacity: 0;
+    box-shadow:
+        0 0 36px 10px #ffffff,
+        0 0 90px 14px #6fc1ff,
+        0 0 180px 24px #5cb6ff;
+}
+.saber-blade.retracting {
+    transition: width 0.32s cubic-bezier(0.7, 0, 0.3, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+    .saber-blade { box-shadow: 0 0 6px #5cb6ff; }
+    .saber-blade.retracting { transition: none; }
+}
+
+/* =====================================================================
+   Easter egg: Star Wars opening crawl. Reached via the saber-drag
+   gesture above.
    ===================================================================== */
 .starwars-overlay {
     position: fixed;
