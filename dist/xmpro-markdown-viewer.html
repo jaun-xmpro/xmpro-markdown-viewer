@@ -1292,34 +1292,39 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
 .starwars-stage {
     position: absolute;
     inset: 0;
-    perspective: 650px;
+    /* Gentler perspective so the far end of the tilted plane shrinks less. */
+    perspective: 1200px;
     perspective-origin: 50% 100%;
     overflow: hidden;
 }
 .starwars-crawl {
     position: absolute;
-    top: 100%;
+    /* Start at top:0% so the H1 is at the top edge of the viewport from
+       frame one — no waiting for the element to scroll up into view. */
+    top: 0%;
     left: 50%;
-    width: min(82%, 1000px);
-    transform: translateX(-50%) rotateX(25deg);
+    width: min(88%, 1300px);
+    /* Less aggressive tilt: lines stay wide enough for multi-word lines
+       even at the far end of the perspective. */
+    transform: translateX(-50%) rotateX(18deg);
     transform-origin: 50% 100%;
     color: #FFE81F;
     font-weight: 700;
     text-align: justify;
-    font-size: clamp(2.75rem, 6.2vw, 7rem);
+    font-size: clamp(2.25rem, 5.5vw, 6rem);
     line-height: 1.4;
     text-shadow: 0 0 16px rgba(255, 232, 31, 0.5);
     /* Animation is always declared, but only runs when .playing is on the
        overlay. Toggling pauses/resumes in place — no jumps. */
     animation-name: swCrawl;
-    animation-duration: 120s;
+    animation-duration: 80s;
     animation-timing-function: linear;
     animation-fill-mode: forwards;
     animation-play-state: paused;
 }
 .starwars-overlay.playing .starwars-crawl { animation-play-state: running; }
 @keyframes swCrawl {
-    from { top: 100%; }
+    from { top: 0%; }
     to   { top: -400%; }
 }
 
@@ -1358,7 +1363,7 @@ a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-
     /* User explicitly held for 8s to trigger this mode — honour the gesture
        and let the crawl animate despite the global reduced-motion override
        at the bottom of this file. */
-    .starwars-crawl { animation-duration: 120s !important; }
+    .starwars-crawl { animation-duration: 80s !important; }
     .starwars-intro { animation-duration: 3.5s !important; }
 }
 
