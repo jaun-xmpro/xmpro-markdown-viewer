@@ -1028,9 +1028,9 @@ ${body}</div>\n`;
 
     function setupReadAloud() {
         if (!els.readBtn) return;
-        // The saber drag is independent of TTS — wire it even without
+        // The hold gesture is independent of TTS — wire it even without
         // speechSynthesis so the Star Wars easter egg is still reachable.
-        setupSaberDrag();
+        setupHoldGesture();
         if (!('speechSynthesis' in window)) return;
         els.readBtn.addEventListener('click', () => {
             if (suppressNextClick) { suppressNextClick = false; return; }
@@ -1121,117 +1121,65 @@ ${body}</div>\n`;
         if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
     }
 
-    // Drag-from-play-button → lightsaber-extends → release-at-full unlocks Star Wars.
-    // SABER_THRESHOLD lets short drags still register as clicks (normal TTS toggle).
-    // SABER_UNLOCK_AT is slack at the end so the user doesn't need to hit exactly the max.
-    const SABER_MAX = 240;
-    const SABER_THRESHOLD = 14;
-    const SABER_UNLOCK_AT = 0.97;
-    let drag = null;
-    let blade = null;
+    const HOLD_MS = 8000;
+    const HOLD_CLICK_THRESHOLD_MS = 180; // below typical click-vs-press boundary
+    let hold = null;
 
-    function setupSaberDrag() {
-        els.readBtn.addEventListener('pointerdown', onDragStart);
-        window.addEventListener('pointermove', onDragMove);
-        window.addEventListener('pointerup', onDragEnd);
-        window.addEventListener('pointercancel', onDragEnd);
+    function setupHoldGesture() {
+        els.readBtn.addEventListener('pointerdown', onHoldStart);
+        document.addEventListener('pointerup', onHoldEnd);
+        document.addEventListener('pointercancel', onHoldEnd);
     }
 
-    function onDragStart(e) {
+    function onHoldStart(e) {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
-        const rect = els.readBtn.getBoundingClientRect();
-        drag = {
+        hold = {
             pointerId: e.pointerId,
-            startX: rect.left + rect.width / 2,
-            startY: rect.top + rect.height / 2,
-            originX: e.clientX,
-            originY: e.clientY,
-            active: false,
-            progress: 0
+            startTime: performance.now(),
+            completed: false,
+            timerId: null,
+            humStarted: false
         };
         try { els.readBtn.setPointerCapture(e.pointerId); } catch {}
+        tickHold();
     }
 
-    function onDragMove(e) {
-        if (!drag || e.pointerId !== drag.pointerId) return;
-        const dx = e.clientX - drag.originX;
-        const dy = e.clientY - drag.originY;
-        const dist = Math.hypot(dx, dy);
-        if (!drag.active) {
-            if (dist < SABER_THRESHOLD) return;
-            drag.active = true;
-            ensureBlade();
+    function tickHold() {
+        if (!hold || hold.completed) return;
+        const elapsed = performance.now() - hold.startTime;
+        if (!hold.humStarted && elapsed >= HOLD_CLICK_THRESHOLD_MS) {
+            hold.humStarted = true;
             startSaberHum();
         }
-        const length = Math.min(dist, SABER_MAX);
-        const angleRad = Math.atan2(e.clientY - drag.startY, e.clientX - drag.startX);
-        drag.progress = length / SABER_MAX;
-        updateBlade(drag.startX, drag.startY, length, angleRad);
-        updateHumModulation(drag.progress);
-    }
-
-    function onDragEnd(e) {
-        if (!drag || e.pointerId !== drag.pointerId) return;
-        try { els.readBtn.releasePointerCapture(drag.pointerId); } catch {}
-        const wasActive = drag.active;
-        const fullEnough = drag.progress >= SABER_UNLOCK_AT;
-        drag = null;
-        if (!wasActive) return;
-        suppressNextClick = true;
-        if (fullEnough) {
-            igniteAndEnter();
-        } else {
-            stopSaberHum(false);
-            retractBlade();
-        }
-    }
-
-    function ensureBlade() {
-        if (blade) return blade;
-        blade = document.createElement('div');
-        blade.className = 'saber-blade';
-        document.body.appendChild(blade);
-        return blade;
-    }
-
-    function updateBlade(x, y, length, angleRad) {
-        if (!blade) return;
-        blade.style.left = x + 'px';
-        blade.style.top = y + 'px';
-        blade.style.width = length + 'px';
-        blade.style.transform = `translateY(-50%) rotate(${angleRad * 180 / Math.PI}deg)`;
-        const ready = (length / SABER_MAX) >= SABER_UNLOCK_AT;
-        blade.classList.toggle('ready', ready);
-    }
-
-    function igniteAndEnter() {
-        if (!blade) { enterStarwars(); return; }
-        blade.classList.add('ignite');
-        stopSaberHum(true);
-        playSaberIgnite();
-        setTimeout(() => {
-            blade?.remove();
-            blade = null;
+        if (elapsed >= HOLD_MS) {
+            hold.completed = true;
+            // Set suppress flag now so the eventual pointerup-induced click
+            // (whenever the user actually releases) doesn't trigger TTS —
+            // cancelHold below clears `hold`, after which onHoldEnd early-
+            // returns without setting this.
+            suppressNextClick = true;
+            stopSaberHum(true);
+            playSaberIgnite();
             enterStarwars();
-        }, 350);
+            setTimeout(cancelHold, 600);
+            return;
+        }
+        hold.timerId = setTimeout(tickHold, 50);
     }
 
-    function retractBlade() {
-        if (!blade) return;
-        const el = blade;
-        blade = null;
-        el.classList.add('retracting');
-        el.style.width = '0';
-        setTimeout(() => el.remove(), 360);
+    function onHoldEnd(e) {
+        if (!hold || e.pointerId !== hold.pointerId) return;
+        const wasHold = (performance.now() - hold.startTime) >= HOLD_CLICK_THRESHOLD_MS;
+        if (!hold.completed) cancelHold();
+        if (wasHold) suppressNextClick = true;
     }
 
-    function updateHumModulation(progress) {
-        if (!humOsc || !humGain || !audioCtx) return;
-        try {
-            const t = audioCtx.currentTime;
-            humOsc.frequency.setTargetAtTime(80 + progress * 110, t, 0.05);
-            humGain.gain.setTargetAtTime(0.012 + progress * 0.04, t, 0.05);
-        } catch {}
+    function cancelHold() {
+        if (!hold) return;
+        if (hold.timerId) clearTimeout(hold.timerId);
+        try { els.readBtn.releasePointerCapture(hold.pointerId); } catch {}
+        if (hold.humStarted) stopSaberHum(false);
+        hold = null;
     }
 
     // Single lazily-created AudioContext shared by hum and ignite. Browsers
@@ -1250,15 +1198,17 @@ ${body}</div>\n`;
     function startSaberHum() {
         const ctx = audio();
         if (!ctx) return;
-        if (humOsc) return; // already running
         try {
             humOsc = ctx.createOscillator();
             humGain = ctx.createGain();
             humOsc.type = 'sawtooth';
             const t = ctx.currentTime;
+            const remaining = (HOLD_MS - HOLD_CLICK_THRESHOLD_MS) / 1000;
             humOsc.frequency.setValueAtTime(80, t);
+            humOsc.frequency.linearRampToValueAtTime(120, t + remaining);
             humGain.gain.setValueAtTime(0.0001, t);
-            humGain.gain.exponentialRampToValueAtTime(0.012, t + 0.15);
+            humGain.gain.exponentialRampToValueAtTime(0.012, t + 0.4);
+            humGain.gain.linearRampToValueAtTime(0.045, t + remaining);
             humOsc.connect(humGain).connect(ctx.destination);
             humOsc.start();
         } catch {}
