@@ -1119,10 +1119,6 @@ ${body}</div>\n`;
         });
         if (els.starwarsPlayBtn) els.starwarsPlayBtn.addEventListener('click', toggleStarwarsPlay);
         if (els.starwarsExitBtn) els.starwarsExitBtn.addEventListener('click', exitStarwars);
-        if (els.starwarsMusicBtn) {
-            els.starwarsMusicBtn.addEventListener('click', toggleStarwarsMusic);
-            setMusicButtonState(false); // start in muted state
-        }
     }
 
     const HOLD_MS = 8000;
@@ -1263,116 +1259,6 @@ ${body}</div>\n`;
         } catch {}
     }
 
-    // ---- Optional 8-bit fanfare ---------------------------------------------
-    // Original heroic-fanfare melody (not the John Williams theme — that's
-    // copyrighted). Square waves in the NES tradition. Loops while the crawl
-    // is in its .playing state and the user has opted in via the music button.
-    const TEMPO_BPM = 116;
-    const BEAT_S = 60 / TEMPO_BPM;
-    const NOTE_HZ = {
-        'F4': 349.23, 'G4': 392.00, 'Ab4': 415.30, 'Bb4': 466.16,
-        'C5': 523.25, 'D5': 587.33, 'Eb5': 622.25, 'F5': 698.46,
-        'G5': 783.99, 'Ab5': 830.61, 'Bb5': 932.33
-    };
-    const FANFARE = [
-        // Bar 1: heroic call
-        ['Bb4', 0.5], ['Bb4', 0.5], ['F5', 1.5], ['Eb5', 0.5],
-        // Bar 2: ascending and holding
-        ['D5', 0.5], ['C5', 0.5], ['Bb5', 3],
-        // Bar 3: triumphant descent
-        ['F5', 1], ['Eb5', 0.5], ['D5', 0.5], ['C5', 1], ['F5', 1],
-        // Bar 4: rising hero
-        ['F5', 0.5], ['G5', 0.5], ['Ab5', 0.5], ['Bb5', 0.5], ['G5', 2],
-        // Bar 5: dotted call
-        ['Eb5', 0.75], ['F5', 0.25], ['G5', 0.5], ['F5', 0.5], ['Eb5', 1], ['D5', 1],
-        // Bar 6: resolution
-        ['Eb5', 0.5], ['D5', 0.5], ['C5', 0.5], ['Bb4', 0.5], ['F4', 1], ['Bb4', 1]
-    ];
-
-    const MUSIC_SCHEDULE_AHEAD_S = 0.4; // schedule notes up to this far in advance
-    let musicEnabled = false;
-    let musicNoteIndex = 0;
-    let musicScheduledUntil = 0;
-    let musicTimer = null;
-
-    function toggleStarwarsMusic() {
-        musicEnabled = !musicEnabled;
-        setMusicButtonState(musicEnabled);
-        if (musicEnabled) {
-            musicNoteIndex = 0;
-            if (els.starwarsOverlay && els.starwarsOverlay.classList.contains('playing')) {
-                startMusic();
-            }
-        } else {
-            stopMusic();
-        }
-    }
-
-    function setMusicButtonState(enabled) {
-        if (!els.starwarsMusicBtn) return;
-        els.starwarsMusicBtn.classList.toggle('active', enabled);
-        els.starwarsMusicBtn.setAttribute('aria-label', enabled ? 'Mute fanfare' : 'Play fanfare');
-        // Swap the SVG: muted has the X mark, active has sound waves.
-        els.starwarsMusicBtn.innerHTML = enabled ? MUSIC_ON_SVG : MUSIC_OFF_SVG;
-    }
-
-    const MUSIC_OFF_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
-    const MUSIC_ON_SVG  = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
-
-    function startMusic() {
-        if (musicTimer) return; // already scheduling
-        const ctx = audio();
-        if (!ctx) return;
-        musicScheduledUntil = ctx.currentTime + 0.05;
-        scheduleMoreNotes();
-    }
-
-    function scheduleMoreNotes() {
-        if (!musicEnabled) { musicTimer = null; return; }
-        const ctx = audio();
-        if (!ctx) { musicTimer = null; return; }
-        while (musicScheduledUntil < ctx.currentTime + MUSIC_SCHEDULE_AHEAD_S) {
-            scheduleFanfareNote(musicNoteIndex);
-            musicNoteIndex = (musicNoteIndex + 1) % FANFARE.length;
-        }
-        musicTimer = setTimeout(scheduleMoreNotes, 120);
-    }
-
-    function scheduleFanfareNote(idx) {
-        const ctx = audio();
-        if (!ctx) return;
-        const [noteName, beats] = FANFARE[idx];
-        const freq = NOTE_HZ[noteName];
-        const duration = beats * BEAT_S;
-        const t = musicScheduledUntil;
-        if (freq) {
-            try {
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'square';
-                osc.frequency.setValueAtTime(freq, t);
-                // 8-bit ADSR: snap attack, quick decay to sustain, hard release.
-                gain.gain.setValueAtTime(0, t);
-                gain.gain.linearRampToValueAtTime(0.05, t + 0.005);
-                gain.gain.linearRampToValueAtTime(0.032, t + 0.04);
-                gain.gain.setValueAtTime(0.032, t + Math.max(0.05, duration - 0.025));
-                gain.gain.linearRampToValueAtTime(0, t + duration);
-                osc.connect(gain).connect(ctx.destination);
-                osc.start(t);
-                osc.stop(t + duration);
-            } catch {}
-        }
-        musicScheduledUntil += duration;
-    }
-
-    function stopMusic() {
-        if (musicTimer) {
-            clearTimeout(musicTimer);
-            musicTimer = null;
-        }
-        // Already-scheduled notes finish naturally — within MUSIC_SCHEDULE_AHEAD_S.
-    }
-
     function enterStarwars() {
         if (!els.starwarsOverlay || !els.starwarsCrawl || !els.content) return;
         // Clone the .md subtree (not the whole viewer-content) so the crawl
@@ -1391,7 +1277,6 @@ ${body}</div>\n`;
         // task is coalesced and the animation doesn't restart from top:100%.
         void els.starwarsOverlay.offsetWidth;
         els.starwarsOverlay.classList.add('playing');
-        if (musicEnabled) { musicNoteIndex = 0; startMusic(); }
         Logger.info('★ Star Wars mode engaged — may the markdown be with you');
     }
 
@@ -1399,20 +1284,13 @@ ${body}</div>\n`;
         if (!els.starwarsOverlay) return;
         els.starwarsOverlay.hidden = true;
         els.starwarsOverlay.classList.remove('playing');
-        stopMusic();
-        // Keep `musicEnabled` so the next entry remembers the user's choice.
     }
 
-    // The play button on the overlay toggles the scroll animation. If the
-    // user has opted into music, it follows the playing state.
+    // The play button on the overlay only toggles the scroll animation.
+    // TTS is intentionally not involved — Star Wars mode is silent reading.
     function toggleStarwarsPlay() {
         if (!els.starwarsOverlay) return;
         els.starwarsOverlay.classList.toggle('playing');
-        const playing = els.starwarsOverlay.classList.contains('playing');
-        if (musicEnabled) {
-            if (playing) startMusic();
-            else stopMusic();
-        }
     }
 
     function populateVoiceList() {
@@ -1862,7 +1740,6 @@ ${body}</div>\n`;
         els.starwarsCrawl = document.getElementById('starwars-crawl');
         els.starwarsPlayBtn = document.getElementById('starwars-play-btn');
         els.starwarsExitBtn = document.getElementById('starwars-exit-btn');
-        els.starwarsMusicBtn = document.getElementById('starwars-music-btn');
     }
 
     function debounce(fn, wait) {
